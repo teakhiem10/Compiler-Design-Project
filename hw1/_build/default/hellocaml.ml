@@ -1051,61 +1051,30 @@ let rec interpret (c:ctxt) (e:exp) : int64 =
   Hint: what simple optimizations can you do with Neg?
 *)
 
-
-let rec last_optimize (e:exp) : exp =
-  begin match e with
-  | Var x -> Var x
-  | Const x -> Const x
-  | Add(x, y) ->  begin match x, y with
-                    | Const 0L, y1 -> y1
-                    | x1, Const 0L -> x1
-                    | Const x1, Const y2 -> Const (Int64.add x1 y2)
-                    | Var x1, Neg(Var y1) -> if x1 = y1 then
-                                              (Const 0L)
-                                            else
-                                              Add(x,y)
-                    | _, _ -> Add(x, y)
-                  end
-| Mult(x, y) -> begin match x, y with
-                  | Const 0L, _ -> Const 0L
-                  | _, Const 0L -> Const 0L
-                  | Const 1L, y1 -> y1
-                  | x1, Const 1L -> x1
-                  | Const x1, Const y2 -> Const (Int64.mul x1 y2)
-                  | _, _ -> Mult(x, y)
-                end
-| Neg (Neg x)  -> x
-| Neg (Const x) -> Const (Int64.neg x)
-| Neg x  -> Neg x
-end
-
 let rec optimize (e:exp) : exp =
   begin match e with
   | Var x -> Var x
   | Const x -> Const x
-  | Add(x, y) ->  begin match x, y with
+  | Add(x, y) ->  begin match x,y with
                     | Const 0L, y1 -> optimize y1
                     | x1, Const 0L -> optimize x1
                     | Const x1, Const y2 -> Const (Int64.add x1 y2)
-                    | Var x1, Neg(Var y1) -> if x1 = y1 then
-                                            (Const 0L)
-                                           else
-                                            last_optimize(Add(optimize x, optimize y))
-                    | _, _ -> last_optimize(Add(optimize x, optimize y))
+                    | Var _, Var _ -> Add(x,y)
+                    | _, _ -> optimize(Add(optimize x, optimize y))
                   end
-  | Mult(x, y) -> begin match x, y with
+  | Mult(x, y) -> begin match x,y with
                     | Const 0L, _ -> Const 0L
                     | _, Const 0L -> Const 0L
                     | Const 1L, y1 -> optimize y1
                     | x1, Const 1L -> optimize x1
-                    | Const x1, Const y1 -> Const (Int64.mul x1 y1)
-                    | _, _ -> last_optimize(Mult(optimize x, optimize y))
+                    | Const x1, Const y2 -> Const (Int64.mul x1 y2)
+                    | Var _, Var _ -> Mult(x,y)
+                    | _, _ -> optimize(Mult(optimize x, optimize y))
                   end
   | Neg (Neg x)  -> optimize x
   | Neg (Const x) -> Const (Int64.neg x)
-  | Neg x  -> last_optimize(Neg (optimize x))
+  | Neg x  -> optimize(Neg (optimize x))
   end
-
 
 
 (******************************************************************************)

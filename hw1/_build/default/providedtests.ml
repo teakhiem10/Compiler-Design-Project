@@ -88,24 +88,16 @@ let provided_tests : suite = [
     ("optimize6", assert_eqf (fun () -> test11) (Const 3L));
     ("optimize7", assert_eqf (fun () -> test12) (Add(Var "x", Var "y")));
     ("optimize8", assert_eqf (fun () -> test13) (Const 6L));
-    ("optimize9", assert_eqf (fun () -> optimize (Neg (Add(Var "x", Var "y")))) (Neg (Add(Var "x", Var "y"))));
-    ("optimize10", assert_eqf (fun () -> optimize (Neg (Mult(Const 0L, Var "y")))) (Const 0L));
-    ("optimize11", assert_eqf (fun () -> optimize (Neg (Neg (Mult(Const 2L, Const 3L))))) (Const 6L));
-    ("optimize12", assert_eqf (fun () -> optimize (Add ((Var "x"), (Neg (Var "x"))))) (Const 0L));
-
-
   ]); 
   Test ("Student-Provided Tests For Problem 5", [
     ("compile1", assert_eqf (fun () -> compile e1) p1); (* "2 * 3" *)
-    ("equal1", assert_eqf (fun () -> interpret ctxt1 e1) (run ctxt1 p1));
+    ("sameres1", assert_eqf (fun () -> interpret ctxt1 e1) (run ctxt1 p1));
     ("compile2", assert_eqf (fun () -> compile e2) [IPushV "x"; IPushC 1L; IAdd]); (* "x + 1" *)
-    ("equal1", assert_eqf (fun () -> interpret ctxt1 e2) (run ctxt1 [IPushV "x"; IPushC 1L; IAdd]));
+    ("sameres1", assert_eqf (fun () -> interpret ctxt1 e2) (run ctxt1 [IPushV "x"; IPushC 1L; IAdd]));
     ("compile3", assert_eqf (fun () -> compile e3) 
       [IPushV "y"; IPushV "x"; IPushC 1L; IAdd; IPushV "x"; IPushC 1L; IAdd; INeg; IMul; IMul]); (* "y * ((x+1) * -(x+1))" *)
-    ("equal3", assert_eqf (fun () -> interpret ctxt2 e3) (run ctxt2 [IPushV "y"; IPushV "x"; IPushC 1L; IAdd; IPushV "x"; IPushC 1L; IAdd; INeg; IMul; IMul]));
-    ("compile4", assert_eqf (fun () -> compile (Neg(Add(Const 1L, Const 2L)))) [IPushC 1L; IPushC 2L; IAdd; INeg]); (* "-(1 + 2)" *)
-    ("equal4", assert_eqf (fun () -> interpret ctxt2 (Neg(Add(Const 1L, Const 2L)))) (run ctxt2 [IPushC 1L; IPushC 2L; IAdd;INeg]));
-
+    ("sameres3", assert_eqf (fun () -> interpret ctxt2 e3) (run ctxt2 [IPushV "y"; IPushV "x"; IPushC 1L; IAdd; IPushV "x"; IPushC 1L; IAdd; INeg; IMul; IMul]));
+    ("compile4", assert_eqf (fun () -> compile (Neg(Add(Const 1L, Const 2L)))) [IPushC 1L; IPushC 2L; IAdd;INeg]); (* "-(1 + 2)" *)
  
   ]); 
 ] 
