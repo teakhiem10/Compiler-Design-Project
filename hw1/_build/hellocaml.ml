@@ -1060,6 +1060,10 @@ let rec last_optimize (e:exp) : exp =
                     | Const 0L, y1 -> y1
                     | x1, Const 0L -> x1
                     | Const x1, Const y2 -> Const (Int64.add x1 y2)
+                    | Var x1, Neg(Var y1) -> if x1 = y1 then
+                                              (Const 0L)
+                                            else
+                                              Add(x,y)
                     | _, _ -> Add(x, y)
                   end
 | Mult(x, y) -> begin match x, y with
@@ -1086,7 +1090,7 @@ let rec optimize (e:exp) : exp =
                     | Var x1, Neg(Var y1) -> if x1 = y1 then
                                             (Const 0L)
                                            else
-                                            last_optimize(Add(x, y))
+                                            last_optimize(Add(optimize x, optimize y))
                     | _, _ -> last_optimize(Add(optimize x, optimize y))
                   end
   | Mult(x, y) -> begin match x, y with
@@ -1094,7 +1098,7 @@ let rec optimize (e:exp) : exp =
                     | _, Const 0L -> Const 0L
                     | Const 1L, y1 -> optimize y1
                     | x1, Const 1L -> optimize x1
-                    | Const x1, Const y2 -> Const (Int64.mul x1 y2)
+                    | Const x1, Const y1 -> Const (Int64.mul x1 y1)
                     | _, _ -> last_optimize(Mult(optimize x, optimize y))
                   end
   | Neg (Neg x)  -> optimize x
