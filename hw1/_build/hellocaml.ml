@@ -1064,6 +1064,7 @@ let rec last_optimize (e:exp) : exp =
                                               (Const 0L)
                                             else
                                               Add(x,y)
+                    | Neg x1, Neg y1 -> Neg(Add(x1, y1))
                     | _, _ -> Add(x, y)
                   end
 | Mult(x, y) -> begin match x, y with
@@ -1071,7 +1072,10 @@ let rec last_optimize (e:exp) : exp =
                   | _, Const 0L -> Const 0L
                   | Const 1L, y1 -> y1
                   | x1, Const 1L -> x1
+                  | Const (-1L), y1 -> Neg y1
+                  | x1, Const (-1L) -> Neg x1
                   | Const x1, Const y2 -> Const (Int64.mul x1 y2)
+                  | Neg x1, Neg y1 -> Mult (x1, y1)
                   | _, _ -> Mult(x, y)
                 end
 | Neg (Neg x)  -> x
@@ -1091,6 +1095,7 @@ let rec optimize (e:exp) : exp =
                                             (Const 0L)
                                            else
                                             last_optimize(Add(optimize x, optimize y))
+                    | Neg x1, Neg y1 -> last_optimize(Neg(Add(optimize x1, optimize y1)))
                     | _, _ -> last_optimize(Add(optimize x, optimize y))
                   end
   | Mult(x, y) -> begin match x, y with
@@ -1098,7 +1103,10 @@ let rec optimize (e:exp) : exp =
                     | _, Const 0L -> Const 0L
                     | Const 1L, y1 -> optimize y1
                     | x1, Const 1L -> optimize x1
+                    | Const (-1L), y1 -> optimize (Neg y1)
+                    | x1, Const (-1L) -> optimize (Neg x1)
                     | Const x1, Const y1 -> Const (Int64.mul x1 y1)
+                    | Neg x1, Neg y1 -> optimize (Mult (x1, y1))
                     | _, _ -> last_optimize(Mult(optimize x, optimize y))
                   end
   | Neg (Neg x)  -> optimize x

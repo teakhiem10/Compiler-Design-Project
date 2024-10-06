@@ -63,6 +63,8 @@ let test13 = optimize t8  (* Expected: Const 6L *)
 
 
 
+
+
 let provided_tests : suite = [
   Test ("Student-Provided Tests For Problem 1-3", [
     ("case1", assert_eqf (fun () -> 42) prob3_ans );
@@ -92,9 +94,16 @@ let provided_tests : suite = [
     ("optimize10", assert_eqf (fun () -> optimize (Neg (Mult(Const 0L, Var "y")))) (Const 0L));
     ("optimize11", assert_eqf (fun () -> optimize (Neg (Neg (Mult(Const 2L, Const 3L))))) (Const 6L));
     ("optimize12", assert_eqf (fun () -> optimize (Add ((Var "x"), (Neg (Var "x"))))) (Const 0L));
+    ("optimize13", assert_eqf (fun () -> optimize (Add((Add ((Var "x"), (Neg (Var "x")))), (Const 1L)))) (Const 1L));
+    ("optimize14", assert_eqf (fun () -> optimize (Mult((Add (Const 1L, Const 3L)), (Const (-1L))))) (Const (-4L)));
+    ("optimize15", assert_eqf (fun () -> optimize (Add(Neg (Var "x"), Neg (Var "y")))) (Neg(Add((Var "x", Var "y")))));
+    ("optimize16", assert_eqf (fun () -> optimize (Mult(Neg (Var "x"), Neg (Var "y")))) (Mult(Var "x", Var "y")));
+
 
 
   ]); 
+  (* cxt 1 maps "x" to 3L *)
+  (* cxt 2 maps "x" to 2L, "y" to 7L *)
   Test ("Student-Provided Tests For Problem 5", [
     ("compile1", assert_eqf (fun () -> compile e1) p1); (* "2 * 3" *)
     ("equal1", assert_eqf (fun () -> interpret ctxt1 e1) (run ctxt1 p1));
@@ -105,9 +114,12 @@ let provided_tests : suite = [
     ("equal3", assert_eqf (fun () -> interpret ctxt2 e3) (run ctxt2 [IPushV "y"; IPushV "x"; IPushC 1L; IAdd; IPushV "x"; IPushC 1L; IAdd; INeg; IMul; IMul]));
     ("compile4", assert_eqf (fun () -> compile (Neg(Add(Const 1L, Const 2L)))) [IPushC 1L; IPushC 2L; IAdd; INeg]); (* "-(1 + 2)" *)
     ("equal4", assert_eqf (fun () -> interpret ctxt2 (Neg(Add(Const 1L, Const 2L)))) (run ctxt2 [IPushC 1L; IPushC 2L; IAdd;INeg]));
+    ("compile4", assert_eqf (fun () -> compile (Mult((Add((Const 1L), (Const 2L))), (Add((Var "x"), (Const 2L)))))) [IPushC 1L; IPushC 2L; IAdd; IPushV "x"; IPushC 2L; IAdd; IMul]); (* "(1 + 2) * (x + 2)" *)
+    ("equal4", assert_eqf (fun () -> interpret ctxt2 (Mult((Add((Const 1L), (Const 2L))), (Add((Var "x"), (Const 2L)))))) (run ctxt2 [IPushC 1L; IPushC 2L; IAdd; IPushV "x"; IPushC 2L; IAdd; IMul]));
 
  
   ]); 
+  
 ] 
 
 
