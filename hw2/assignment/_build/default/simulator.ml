@@ -143,7 +143,13 @@ let sbytes_of_data : data -> sbyte list = function
 let debug_simulator = ref false
 
 (* Interpret a condition code with respect to the given flags. *)
-let interp_cnd {fo; fs; fz} : cnd -> bool = fun x -> failwith "interp_cnd unimplemented"
+let interp_cnd {fo; fs; fz} : cnd -> bool = fun (c:cnd) -> begin match c with
+                                                      | Eq -> 
+                                                      | Neq 
+                                                      | Gt 
+                                                      | Ge 
+                                                      | Lt 
+                                                      | Le
 
 (* Maps an X86lite address into Some OCaml array index,
    or None if the address is not within the legal address space. *)
