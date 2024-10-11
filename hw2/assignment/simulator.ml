@@ -355,7 +355,9 @@ let handle_data_movement (m:mach) (op:opcode) (operands: operand list) : unit =
       store_in_memory m (get_register_value m Rsp) result
     | Popq -> 
       (match operand1 with
-      | Reg reg -> store_in_register m reg result
+      | Reg reg -> 
+        (store_in_register m reg result;
+        store_in_register m Rsp (Int64.add 8L (get_register_value m Rsp)))
       | _ -> failwith "I think this is illegal?"
       )
 
