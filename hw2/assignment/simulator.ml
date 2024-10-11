@@ -177,62 +177,72 @@ let get_memory_value (m:mach) (addr:int64) : int64 =
   let array_index_option = map_addr addr in
   match array_index_option with
   | None -> failwith "Address outside range"
-  | Some array_index -> int64_of_sbytes (Array.sub m.mem array_index 8)
+  | Some array_index -> int64_of_sbytes (Array.to_list (Array.sub m.mem array_index 8))
 
-let get_instruction_from_memory (m:mach) : ins = 
-  let array_index_option = mapt_addr (get_register_value m Rip) in
+let get_instruction_from_memory (m:mach) : sbyte = 
+  let array_index_option = map_addr (get_register_value m Rip) in
   match array_index_option with
   | None -> failwith "Rip points to invalid memory location"
   | Some array_index -> Array.get m.mem array_index
 
 let store_in_memory (m:mach) (addr:int64) (data:int64): unit = 
-  let sybtes = sbytes_of_int64 data in
+  let sbytes = sbytes_of_int64 data in
   let array_index_option = map_addr addr in
   match array_index_option with
   | None -> failwith "Address outside range"
   | Some array_index -> 
-    let insert_at_location (index:int) (sbyte:b) : unit = 
+    let insert_at_location = fun (index:int) (b:sbyte) : unit ->
       Array.set m.mem (array_index + index) b
     in
     List.iteri insert_at_location sbytes
 
-let get_num_from_operand: (m:mach) (op:operand): int64 = 
+let get_num_from_operand (m:mach) (op:operand): int64 = 
   match op with
-  | Imm imm -> imm
+  | Imm imm -> 
+    (match imm with
+    | Lit lit -> lit
+    | _ -> failwith "Cannot get number from label"
+    )
   | Reg reg -> get_register_value m reg
   | Ind1 imm -> 
-    match imm with
+    (match imm with
     | Lit lit -> get_memory_value m lit
     | _ -> failwith "Cannot get value of label"
+    )
 
 let store_value_at_operand (m:mach) (op:operand) (data:int64) : unit = 
   match op with 
   | Reg reg -> store_in_register m reg data
   | Ind1 imm -> 
-    match imm with
+    (match imm with
     | Lit lit -> store_in_memory m lit data
     | _ -> failwith "Cannot store at label"
+    )
   | _ -> failwith "Cannot store at immediate"
 
 let increment_rip (m:mach) : unit = 
-  store_in_register m Rip (Int64.add 8L (get_register_value m Rip))
+    store_in_register m Rip (Int64.add 8L (get_register_value m Rip))
 
-(* Make all indirect operands into Ind1 *)
+    (* Make all indirect operands into Ind1 *)
 let handle_operands (m:mach) (operands: operand list) : operand list = 
   let handle_operand (op:operand) : operand = 
     match op with 
     | Imm _
     | Reg _
     | Ind1 _ -> op
-    | Ind2 register -> Ind1 (get_register_value m register)
-    | Ind3 (immediate, register) -> Ind1 (Int64.add (get_register_value m register)  immediate)
+    | Ind2 register -> Ind1 (Lit (get_register_value m register))
+    | Ind3 (imm, register) -> 
+      (match imm with
+      | Lit lit -> Ind1 (Lit (Int64.add (get_register_value m register)  lit))
+      | _ -> failwith "Cannot handle label in handle_operands"
+      )
   in
   List.map handle_operand operands
 
-let get_bit (num:int64) (amt:int) : int64 = Int64.shift_right_logical (Int64.shift_left num (31 - amt)) amt
+let get_bit (num:int64) (amt:int) : int = Int64.to_int (Int64.shift_right_logical (Int64.shift_left num (31 - amt)) amt)
 
 (* extracts sign bit from num *)
-let get_sign (num: int64) : int64 = get_bit num 31
+let get_sign (num: int64) : int = get_bit num 31
 
 let truncate_and_get_flags (num: Big_int.big_int): (bool * bool * bool * int64) = 
   let oF = Big_int.gt_big_int num (Big_int.big_int_of_int64 Int64.max_int)
@@ -249,95 +259,105 @@ let truncate_and_get_flags (num: Big_int.big_int): (bool * bool * bool * int64) 
   let zF = Int64.equal 0L result in 
   (oF, sF, zF, result)
 
-
 let handle_unary_exp (op:opcode) (num:int64) : Big_int.big_int = 
-  let bNum = Big_int.big_int_of_int64 num in
-  match op with
-  | Negq -> Big_int.sub_big_int Big_int.zero_big_int bNum
-  | Incq -> Big_int.add_big_int bNum Big_int.unit_big_int
-  | Decq -> Big_int.sub_big_int bNum Big_int.unit_big_int
-  | Notq -> Big_int.big_int_of_int64 (Int64.lognot num)
-
+    let bNum = Big_int.big_int_of_int64 num in
+    match op with
+    | Negq -> Big_int.sub_big_int Big_int.zero_big_int bNum
+    | Incq -> Big_int.add_big_int bNum Big_int.unit_big_int
+    | Decq -> Big_int.sub_big_int bNum Big_int.unit_big_int
+    | Notq -> Big_int.big_int_of_int64 (Int64.lognot num)
+  
 let handle_binary_exp (op:opcode) (num1:int64) (num2:int64) : Big_int.big_int = 
-  let b1 = Big_int.big_int_of_int64 num1 in
-  let b2 = Big_int.big_int_of_int64 num2 in
-  match op with
-  | Addq -> Big_int.add_big_int b2 b1
-  | Subq -> Big_int.sub_big_int b2 b1
-  | Imulq -> Big_int.mult_big_int b2 b1
-  | Andq -> Big_int.and_big_int b2 b1
-  | Orq -> Big_int.or_big_int b2 b1
-  | Xorq -> Big_int.xor_big_int b2 b1
-  | Sarq | Shlq | Shrq -> 
-    let amt = Int64.to_int num1 in
-    let result = 
-      match op with
-      | Sarq -> Int64.shift_right num2 amt
-      | Shlq -> Int64.shift_left num2 amt
-      | Shrq -> Int64.shift_right_logical num2 amt
-    in Big_int.big_int_of_int64 result
+    let b1 = Big_int.big_int_of_int64 num1 in
+    let b2 = Big_int.big_int_of_int64 num2 in
+    match op with
+    | Addq -> Big_int.add_big_int b2 b1
+    | Subq -> Big_int.sub_big_int b2 b1
+    | Imulq -> Big_int.mult_big_int b2 b1
+    | Andq -> Big_int.and_big_int b2 b1
+    | Orq -> Big_int.or_big_int b2 b1
+    | Xorq -> Big_int.xor_big_int b2 b1
+    | Sarq | Shlq | Shrq -> 
+      let amt = Int64.to_int num1 in
+      let result = 
+        match op with
+        | Sarq -> Int64.shift_right num2 amt
+        | Shlq -> Int64.shift_left num2 amt
+        | Shrq -> Int64.shift_right_logical num2 amt
+      in Big_int.big_int_of_int64 result
 
-let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int64 * int64 * int64 * int64) = 
-  let aux =get_num_from_operand m
+let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int * int * int * int64) = 
+  let aux = get_num_from_operand m in
   let numbers = List.map aux operands in
   let big_int_result = 
     match op with
     | Negq | Incq | Decq | Notq -> handle_unary_exp op (List.hd numbers)
-    | Addq | Subq | Imulq | Andq | Orq | Xorq | Sarq | Shlq | Shrq -> handle_binary_exp op (List.nth 1 numbers)
+    | Addq | Subq | Imulq | Andq | Orq | Xorq | Sarq | Shlq | Shrq -> handle_binary_exp op (List.hd numbers) (List.nth numbers 1)
     in
   let (oF, sF, zF, result) = truncate_and_get_flags big_int_result in 
   let sf_return = 
     match op with
-    | Negq | Addq | Subq | Incq | Decq | Andq | Orq | Xorq -> sF
-    | Sarq | Shlq | Shrq -> if Int64.equal (List.hd numbers) 0L then -1 else sF
-    | Imulq | Notq -> -1L
+    | Negq | Addq | Subq | Incq | Decq | Andq | Orq | Xorq -> Bool.to_int sF
+    | Sarq | Shlq | Shrq -> if Int64.equal (List.hd numbers) 0L then -1 else Bool.to_int sF
+    | Imulq | Notq -> -1
   in 
   let zF_return = 
     match op with
-    | Negq | Addq | Subq | Incq | Decq | Andq | Orq | Xorq -> zF
-    | Sarq | Shlq | Shrq -> if Int64.equal (List.hd numbers) 0L then -1 else zF
-    | Imulq | Notq -> -1L
+    | Negq | Addq | Subq | Incq | Decq | Andq | Orq | Xorq -> Bool.to_int zF
+    | Sarq | Shlq | Shrq -> if Int64.equal (List.hd numbers) 0L then -1 else Bool.to_int zF
+    | Imulq | Notq -> -1
   in
   let of_return =
     match op with
-    | Negq | Subq | Decq -> if Int64.equal (List.hd numbers) Int64.min_int then 1 else 0
-    | Andq | Orq | Xorq -> 0L
-    | Notq -> -1L
-    | Addq | Imulq | Incq  -> oF
+    | Negq | Subq | Decq -> if Int64.equal (List.hd numbers) Int64.min_int or oF then 1 else 0
+    | Andq | Orq | Xorq -> 0
+    | Notq -> -1
+    | Addq | Imulq | Incq  -> Bool.to_int oF
     | Sarq | Shlq | Shrq -> if (Int64.equal (List.hd numbers) 0L) || not (Int64.equal (List.hd numbers) 1L) then -1 else 
       match op with
-      | Sarq -> 0L
-      | Shlq -> if Int64.equal (get_bit (List.nth numbers 1) 31) (get_bit (List.nth numbers 1) 30) then 0L else 1L
+      | Sarq -> 0
+      | Shlq -> if (get_bit (List.nth numbers 1) 31) = (get_bit (List.nth numbers 1) 30) then 0 else 1
       | Shrq -> get_sign (List.nth numbers 1)
   in 
   (of_return, sf_return, zF_return, result)
-    
+
 let handle_data_movement (m:mach) (op:opcode) (operands: operand list) : unit = 
   let operand1 = List.hd operands in
   let result = 
     match op with 
     | Leaq -> let ind = operand1 in 
-      match ind with
-      | Ind1 imm -> imm
+      (match ind with
+      | Ind1 imm -> 
+        (match imm with 
+        | Lit lit -> lit
+        | _ -> failwith "Cannot interpret label"
+        )
       | _ -> failwith "Operand should be simplified to Ind1 before passing to this function"
+      )
     | Movq -> get_num_from_operand m operand1
     | Pushq -> get_num_from_operand m operand1
-    | Popq -> get_memory_value m (get_register_value Rsp)
+    | Popq -> get_memory_value m (get_register_value m Rsp)
   in 
     match op with 
     | Leaq | Movq -> 
       let operand2 = List.nth operands 1 in 
-      match operand2 with
+      (match operand2 with
       | Reg reg -> store_in_register m reg result
-      | Ind1 imm -> store_in_memory m imm result
+      | Ind1 imm -> 
+        (match imm with 
+        | Lit lit -> store_in_memory m lit result
+        | _ -> failwith "Cannot store into label"
+        )
       | _ -> failwith "Invalid storage type"
+      )
     | Pushq -> 
       store_in_register m Rsp (Int64.sub (get_register_value m Rsp) 8L);
       store_in_memory m (get_register_value m Rsp) result
     | Popq -> 
-      match operand1 with
+      (match operand1 with
       | Reg reg -> store_in_register m reg result
       | _ -> failwith "I think this is illegal?"
+      )
 
 let handle_conditional (m:mach) (op:opcode) (cc:cnd) (operand:operand) : unit = 
   let cc_true = interp_cnd m.flags cc in
@@ -354,38 +374,47 @@ let handle_conditional (m:mach) (op:opcode) (cc:cnd) (operand:operand) : unit =
 
 let handle_control_flow (m:mach) (op:opcode) (operands: operand list) : unit = 
   match op with
-  | Retq -> handle_data_movement m Popq (Reg Rip)
+  | Retq -> handle_data_movement m Popq [Reg Rip]
   | _ -> let operand1 = List.hd operands in
-    match op with
+    (match op with
     | Jmp -> store_in_register m Rip (get_num_from_operand m operand1)
     | Callq -> 
-      handle_data_movement m Pushq (Reg Rip); 
-      store_in_register m Rip (get_num_from_operand m operand1)
+      handle_data_movement m Pushq [Reg Rip];
+      store_in_register m Rip (get_num_from_operand m operand1);
+    )
 
-let update_flags (m:mach) (sF:int64) (zF:int64) (oF:int64) : unit = 
-  if Int64.equal -1L sF then () else m.flags.fs <- sF;
-  if Int64.equal -1L zF then () else m.flags.fz <- zF;
-  if Int64.equal -1L oF then () else m.flags.fo <- oF;
+let update_flags (m:mach) (sF:int) (zF:int) (oF:int) : unit = 
+  ((if -1 = sF then () else m.flags.fs <- sF = 1); 
+  (if -1 = zF then () else m.flags.fz <- zF = 1);
+  (if -1 = oF then () else m.flags.fo <- oF = 1);)
+
+let get_destination_for_expression (operands: operand list) : operand =
+  if List.length operands > 1 then List.nth operands 1 else List.hd operands
+
+let do_instruction (m:mach) (op:opcode) (operands: operand list) : unit = 
+  match op with
+  | Leaq | Movq | Pushq | Popq -> handle_data_movement m op operands
+  | Set cnd | J cnd -> handle_conditional m op cnd (List.hd operands)
+  | Retq | Jmp | Callq -> handle_control_flow m op operands
+  | Cmpq -> 
+    let (sF, zF, oF, _) = handle_exp m op operands in
+    update_flags m sF zF oF;
+  | _ -> 
+    let (sF, zF, oF, result) = handle_exp m op operands in
+    let destination = get_destination_for_expression operands in
+    store_value_at_operand m destination result;
+    update_flags m sF zF oF
 
 let step (m:mach) : unit =
   let ins_byte = get_instruction_from_memory m in
     match ins_byte with 
-    | InsFrag | Byte -> failwith "Instruction pointer does not point to an instruction"
+    | InsFrag | Byte _ -> failwith "Instruction pointer does not point to an instruction"
     | InsB0 (opcode, operands) -> 
-      let simpler_operands = handle_operands operands in
+      let simpler_operands = handle_operands m operands in
+      do_instruction m opcode simpler_operands;
       match opcode with
-      | Leaq | Movq | Pushq | Popq -> handle_data_movement m opcode simpler_operands
-      | Set cnd | J cnd -> handle_conditional m opcode cnd (List.hd simpler_operands)
-      | Retq | Jmp | Callq -> handle_control_flow m opcode simpler_operands
-      | Cmpq -> 
-        let (sF, zF, oF, _) = handle_exp m opcode simpler_operands in
-        update_flags m sF zF oF
-      | _ -> 
-        let (sF, zF, oF, result) = handle_exp m opcode simpler_operands in
-
-
-
-
+      | Jmp | Callq | Retq | J _ -> ()
+      | _ -> increment_rip m
 
 (* Runs the machine until the rip register reaches a designated
    memory address. Returns the contents of %rax when the 
@@ -393,7 +422,7 @@ let step (m:mach) : unit =
 let run (m:mach) : int64 = 
   while m.regs.(rind Rip) <> exit_addr do step m done;
   m.regs.(rind Rax)
-
+  
 (* assembling and linking --------------------------------------------------- *)
 
 (* A representation of the executable *)
@@ -411,19 +440,19 @@ exception Undefined_sym of lbl
 exception Redefined_sym of lbl
 
 (* Convert an X86 program into an object file:
-   - separate the text and data segments
-   - compute the size of each segment
+    - separate the text and data segments
+    - compute the size of each segment
       Note: the size of an Asciz string section is (1 + the string length)
             due to the null terminator
 
-   - resolve the labels to concrete addresses and 'patch' the instructions to 
-     replace Lbl values with the corresponding Imm values.
+    - resolve the labels to concrete addresses and 'patch' the instructions to 
+      replace Lbl values with the corresponding Imm values.
 
-   - the text segment starts at the lowest address
-   - the data segment starts after the text segment
+    - the text segment starts at the lowest address
+    - the data segment starts after the text segment
 
   HINT: List.fold_left and List.fold_right are your friends.
- *)
+  *)
 let assemble (p:prog) : exec =
 failwith "assemble unimplemented"
 
