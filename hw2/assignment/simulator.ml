@@ -352,6 +352,21 @@ let handle_conditional (m:mach) (op:opcode) (cc:cnd) (operand:operand) : unit =
     else increment_rip m
   | _ -> failwith "You should not be here"
 
+let handle_control_flow (m:mach) (op:opcode) (operands: operand list) : unit = 
+  match op with
+  | Retq -> handle_data_movement m Popq (Reg Rip)
+  | _ -> let operand1 = List.hd operands in
+    match op with
+    | Jmp -> store_in_register m Rip (get_num_from_operand m operand1)
+    | Callq -> 
+      handle_data_movement m Pushq (Reg Rip); 
+      store_in_register m Rip (get_num_from_operand m operand1)
+
+let update_flags (m:mach) (sF:int64) (zF:int64) (oF:int64) : unit = 
+  if Int64.equal -1L sF then () else m.flags.fs <- sF;
+  if Int64.equal -1L zF then () else m.flags.fz <- zF;
+  if Int64.equal -1L oF then () else m.flags.fo <- oF;
+
 let step (m:mach) : unit =
   let ins_byte = get_instruction_from_memory m in
     match ins_byte with 
@@ -361,12 +376,13 @@ let step (m:mach) : unit =
       match opcode with
       | Leaq | Movq | Pushq | Popq -> handle_data_movement m opcode simpler_operands
       | Set cnd | J cnd -> handle_conditional m opcode cnd (List.hd simpler_operands)
+      | Retq | Jmp | Callq -> handle_control_flow m opcode simpler_operands
+      | Cmpq -> 
+        let (sF, zF, oF, _) = handle_exp m opcode simpler_operands in
+        update_flags m sF zF oF
       | _ -> 
-        let (sF, zF, oF, result) = 
-        match opcode with
-        | Incq | Decq | Negq | Notq
-        | Addq | Subq | Imulq | Xorq | Orq | Andq
-        | Shlq | Sarq | Shrq -> handle_exp m opcode simpler_operands
+        let (sF, zF, oF, result) = handle_exp m opcode simpler_operands in
+
 
 
 
