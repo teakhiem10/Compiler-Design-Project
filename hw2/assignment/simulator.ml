@@ -196,6 +196,27 @@ let store_in_memory (m:mach) (addr:int64) (data:int64): unit =
     in
     List.iteri insert_at_location sbytes
 
+let get_num_from_operand: (m:mach) (op:operand): int64 = 
+  match op with
+  | Imm imm -> imm
+  | Reg reg -> get_register_value m reg
+  | Ind1 imm -> 
+    match imm with
+    | Lit lit -> get_memory_value m lit
+    | _ -> failwith "Cannot get value of label"
+
+let store_value_at_operand (m:mach) (op:operand) (data:int64) : unit = 
+  match op with 
+  | Reg reg -> store_in_register m reg data
+  | Ind1 imm -> 
+    match imm with
+    | Lit lit -> store_in_memory m lit data
+    | _ -> failwith "Cannot store at label"
+  | _ -> failwith "Cannot store at immediate"
+
+let increment_rip (m:mach) : unit = 
+  store_in_register m Rip (Int64.add 8L (get_register_value m Rip))
+
 (* Make all indirect operands into Ind1 *)
 let handle_operands (m:mach) (operands: operand list) : operand list = 
   let handle_operand (op:operand) : operand = 
@@ -255,15 +276,6 @@ let handle_binary_exp (op:opcode) (num1:int64) (num2:int64) : Big_int.big_int =
       | Shlq -> Int64.shift_left num2 amt
       | Shrq -> Int64.shift_right_logical num2 amt
     in Big_int.big_int_of_int64 result
-  
-let get_num_from_operand: (m:mach) (op:operand): int64 = 
-match op with
-| Imm imm -> imm
-| Reg reg -> get_register_value m reg
-| Ind1 imm -> let optional_index = map_addr imm in 
-  match optional_index with
-  | None   -> failwith "Cannot access memory" 
-  | Some i -> get_memory_value 
 
 let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int64 * int64 * int64 * int64) = 
   let aux =get_num_from_operand m
@@ -327,8 +339,18 @@ let handle_data_movement (m:mach) (op:opcode) (operands: operand list) : unit =
       | Reg reg -> store_in_register m reg result
       | _ -> failwith "I think this is illegal?"
 
-
-
+let handle_conditional (m:mach) (op:opcode) (cc:cnd) (operand:operand) : unit = 
+  let cc_true = interp_cnd m.flags cc in
+  match op with
+  | Set _ -> 
+    let mask = (Int64.logor (Int64.lognot 255L) (if cc_true then 1L else 0L)) in
+    let tmp = get_num_from_operand m operand in
+    let result = Int64.logand (Int64.logor tmp 255L) mask in
+    store_value_at_operand m operand result
+  | J _ ->
+    if cc_true then store_in_register m Rip (get_num_from_operand m operand)
+    else increment_rip m
+  | _ -> failwith "You should not be here"
 
 let step (m:mach) : unit =
   let ins_byte = get_instruction_from_memory m in
@@ -337,8 +359,9 @@ let step (m:mach) : unit =
     | InsB0 (opcode, operands) -> 
       let simpler_operands = handle_operands operands in
       match opcode with
-      | Leaq | Movq | Pushq | Popq -> handle_data_movement
-      | _ ->
+      | Leaq | Movq | Pushq | Popq -> handle_data_movement m opcode simpler_operands
+      | Set cnd | J cnd -> handle_conditional m opcode cnd (List.hd simpler_operands)
+      | _ -> 
         let (sF, zF, oF, result) = 
         match opcode with
         | Incq | Decq | Negq | Notq
