@@ -135,7 +135,7 @@ let interp_cnd_test (fo, fs, fz) tru () =
 let cc_test (s:string) (n: int) (m: mach) (fo', fs', fz') (f: mach -> bool) () =
   let m' = {m with flags = {fo=fo';fs=fs';fz=fz'}} in
   for i=1 to n do step m' done;
-  if (f m') then () else failwith s
+  if (f m') then () else failwith (s ^ (Printf.sprintf ", but got OF:%b SF:%b ZF:%b, result:%s" m'.flags.fo m'.flags.fs m'.flags.fz (Int64.to_string m.regs.(rind Rax))))
 
 let cs_test (n:int) (m:mach) (fo',fs',fz') =
   cc_test (Printf.sprintf "expected OF:%b SF:%b ZF:%b" fo' fs' fz')
