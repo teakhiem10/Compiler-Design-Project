@@ -239,7 +239,7 @@ let handle_operands (m:mach) (operands: operand list) : operand list =
   in
   List.map handle_operand operands
 
-let get_bit (num:int64) (amt:int) : int = Int64.to_int (Int64.shift_right_logical (Int64.shift_left num (63 - amt)) amt)
+let get_bit (num:int64) (amt:int) : int = Int64.to_int (Int64.shift_right_logical (Int64.shift_left num (63 - amt)) 63)
 
 (* extracts sign bit from num *)
 let get_sign (num: int64) : int = get_bit num 63
@@ -255,7 +255,7 @@ let truncate_and_get_flags (num: Big_int.big_int): (bool * bool * bool * int64) 
   else
     Big_int.int64_of_big_int (Big_int.sub_big_int wrapped modulus)
   in
-  let sF = Int64.equal 1L (Int64.shift_right_logical result 63) in
+  let sF = 1 = (get_sign result) in
   let zF = Int64.equal 0L result in 
   (oF, sF, zF, result)
 
