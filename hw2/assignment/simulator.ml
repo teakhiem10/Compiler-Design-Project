@@ -399,7 +399,7 @@ let do_instruction (m:mach) (op:opcode) (operands: operand list) : unit =
   | Set cnd | J cnd -> handle_conditional m op cnd (List.hd operands)
   | Retq | Jmp | Callq -> handle_control_flow m op operands
   | Cmpq -> 
-    let (sF, zF, oF, _) = handle_exp m op operands in
+    let (sF, zF, oF, _) = handle_exp m Subq operands in
     update_flags m sF zF oF;
   | _ -> 
     let (sF, zF, oF, result) = handle_exp m op operands in
