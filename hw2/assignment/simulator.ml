@@ -385,10 +385,10 @@ let handle_control_flow (m:mach) (op:opcode) (operands: operand list) : unit =
       store_in_register m Rip (get_num_from_operand m operand1);
     )
 
-let update_flags (m:mach) (sF:int) (zF:int) (oF:int) : unit = 
-  ((if -1 = sF then () else m.flags.fs <- sF = 1); 
-  (if -1 = zF then () else m.flags.fz <- zF = 1);
-  (if -1 = oF then () else m.flags.fo <- oF = 1);)
+let update_flags (m:mach) (oF:int) (sF:int) (zF:int) : unit = 
+  (if -1 = sF then () else m.flags.fs <- sF = 1; 
+  if -1 = zF then () else m.flags.fz <- zF = 1;
+  if -1 = oF then () else m.flags.fo <- oF = 1;)
 
 let get_destination_for_expression (operands: operand list) : operand =
   if List.length operands > 1 then List.nth operands 1 else List.hd operands
@@ -399,13 +399,13 @@ let do_instruction (m:mach) (op:opcode) (operands: operand list) : unit =
   | Set cnd | J cnd -> handle_conditional m op cnd (List.hd operands)
   | Retq | Jmp | Callq -> handle_control_flow m op operands
   | Cmpq -> 
-    let (sF, zF, oF, _) = handle_exp m Subq operands in
-    update_flags m sF zF oF;
+    let (oF, sF, zF, _) = handle_exp m Subq operands in
+    update_flags m oF sF zF;
   | _ -> 
-    let (sF, zF, oF, result) = handle_exp m op operands in
+    let (oF, sF, zF, result) = handle_exp m op operands in
     let destination = get_destination_for_expression operands in
     store_value_at_operand m destination result;
-    update_flags m sF zF oF
+    update_flags m oF sF zF
 
 let step (m:mach) : unit =
   let ins_byte = get_instruction_from_memory m in
