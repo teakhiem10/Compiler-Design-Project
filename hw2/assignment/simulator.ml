@@ -239,10 +239,10 @@ let handle_operands (m:mach) (operands: operand list) : operand list =
   in
   List.map handle_operand operands
 
-let get_bit (num:int64) (amt:int) : int = Int64.to_int (Int64.shift_right_logical (Int64.shift_left num (31 - amt)) amt)
+let get_bit (num:int64) (amt:int) : int = Int64.to_int (Int64.shift_right_logical (Int64.shift_left num (63 - amt)) amt)
 
 (* extracts sign bit from num *)
-let get_sign (num: int64) : int = get_bit num 31
+let get_sign (num: int64) : int = get_bit num 63
 
 let truncate_and_get_flags (num: Big_int.big_int): (bool * bool * bool * int64) = 
   let oF = Big_int.gt_big_int num (Big_int.big_int_of_int64 Int64.max_int)
@@ -316,7 +316,7 @@ let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int * int * int 
     | Sarq | Shlq | Shrq -> if (Int64.equal (List.hd numbers) 0L) || not (Int64.equal (List.hd numbers) 1L) then -1 else 
       match op with
       | Sarq -> 0
-      | Shlq -> if (get_bit (List.nth numbers 1) 31) = (get_bit (List.nth numbers 1) 30) then 0 else 1
+      | Shlq -> if (get_bit (List.nth numbers 1) 63) = (get_bit (List.nth numbers 1) 62) then 0 else 1
       | Shrq -> get_sign (List.nth numbers 1)
   in 
   (of_return, sf_return, zF_return, result)
