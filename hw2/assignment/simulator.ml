@@ -266,6 +266,7 @@ let handle_unary_exp (op:opcode) (num:int64) : Big_int.big_int =
     | Incq -> Big_int.add_big_int bNum Big_int.unit_big_int
     | Decq -> Big_int.sub_big_int bNum Big_int.unit_big_int
     | Notq -> Big_int.big_int_of_int64 (Int64.lognot num)
+    | _ -> failwith "binary instruction detected:"
   
 let handle_binary_exp (op:opcode) (num1:int64) (num2:int64) : Big_int.big_int = 
     let b1 = Big_int.big_int_of_int64 num1 in
@@ -285,6 +286,7 @@ let handle_binary_exp (op:opcode) (num1:int64) (num2:int64) : Big_int.big_int =
         | Shlq -> Int64.shift_left num2 amt
         | Shrq -> Int64.shift_right_logical num2 amt
       in Big_int.big_int_of_int64 result
+    |_-> failwith "unary exp detected:"
 
 let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int * int * int * int64) = 
   let aux = get_num_from_operand m in
@@ -293,6 +295,7 @@ let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int * int * int 
     match op with
     | Negq | Incq | Decq | Notq -> handle_unary_exp op (List.hd numbers)
     | Addq | Subq | Imulq | Andq | Orq | Xorq | Sarq | Shlq | Shrq -> handle_binary_exp op (List.hd numbers) (List.nth numbers 1)
+    | _ -> failwith "data movement instruction detected:"
     in
   let (oF, sF, zF, result) = truncate_and_get_flags big_int_result in 
   let sf_return = 
@@ -300,12 +303,14 @@ let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int * int * int 
     | Negq | Addq | Subq | Incq | Decq | Andq | Orq | Xorq -> Bool.to_int sF
     | Sarq | Shlq | Shrq -> if Int64.equal (List.hd numbers) 0L then -1 else Bool.to_int sF
     | Imulq | Notq -> -1
+    | _ -> failwith "data movement instruction detected:"
   in 
   let zF_return = 
     match op with
     | Negq | Addq | Subq | Incq | Decq | Andq | Orq | Xorq -> Bool.to_int zF
     | Sarq | Shlq | Shrq -> if Int64.equal (List.hd numbers) 0L then -1 else Bool.to_int zF
     | Imulq | Notq -> -1
+    | _-> failwith "data movement instruction detected:"
   in
   let of_return =
     match op with
@@ -314,10 +319,13 @@ let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int * int * int 
     | Notq -> -1
     | Addq | Imulq | Incq  -> Bool.to_int oF
     | Sarq | Shlq | Shrq -> if (Int64.equal (List.hd numbers) 0L) || not (Int64.equal (List.hd numbers) 1L) then -1 else 
-      match op with
+      begin match op with
       | Sarq -> 0
       | Shlq -> if (get_bit (List.nth numbers 1) 63) = (get_bit (List.nth numbers 1) 62) then 0 else 1
       | Shrq -> get_sign (List.nth numbers 1)
+      | _ -> failwith "data movement instruction detected:"
+      end
+    | _-> failwith "data movement instruction detected:"
   in 
   (of_return, sf_return, zF_return, result)
 
@@ -337,6 +345,7 @@ let handle_data_movement (m:mach) (op:opcode) (operands: operand list) : unit =
     | Movq -> get_num_from_operand m operand1
     | Pushq -> get_num_from_operand m operand1
     | Popq -> get_memory_value m (get_register_value m Rsp)
+    | _ -> failwith "non_data-movement instruction detected:"
   in 
     match op with 
     | Leaq | Movq -> 
@@ -360,6 +369,7 @@ let handle_data_movement (m:mach) (op:opcode) (operands: operand list) : unit =
         store_in_register m Rsp (Int64.add 8L (get_register_value m Rsp)))
       | _ -> failwith "I think this is illegal?"
       )
+    | _ -> failwith "non-data-movement instruction detected:"
 
 let handle_conditional (m:mach) (op:opcode) (cc:cnd) (operand:operand) : unit = 
   let cc_true = interp_cnd m.flags cc in
