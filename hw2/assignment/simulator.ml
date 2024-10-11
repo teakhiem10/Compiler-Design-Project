@@ -209,6 +209,7 @@ let get_num_from_operand (m:mach) (op:operand): int64 =
     | Lit lit -> get_memory_value m lit
     | _ -> failwith "Cannot get value of label"
     )
+  | _ -> failwith "false instruction detected:"
 
 let store_value_at_operand (m:mach) (op:operand) (data:int64) : unit = 
   match op with 
@@ -275,7 +276,7 @@ let handle_binary_exp (op:opcode) (num1:int64) (num2:int64) : Big_int.big_int =
     | Addq -> Big_int.add_big_int b2 b1
     | Subq -> Big_int.sub_big_int b2 b1
     | Imulq -> Big_int.mult_big_int b2 b1
-    | Andq -> Big_int.and_big_int b2 b1
+    | Andq -> Big_int.big_int_of_int64(Int64.logand num2 num1)
     | Orq -> Big_int.or_big_int b2 b1
     | Xorq -> Big_int.xor_big_int b2 b1
     | Sarq | Shlq | Shrq -> 
@@ -285,6 +286,7 @@ let handle_binary_exp (op:opcode) (num1:int64) (num2:int64) : Big_int.big_int =
         | Sarq -> Int64.shift_right num2 amt
         | Shlq -> Int64.shift_left num2 amt
         | Shrq -> Int64.shift_right_logical num2 amt
+        | _ -> failwith "non-shift instruction detected:"
       in Big_int.big_int_of_int64 result
     |_-> failwith "unary exp detected:"
 
@@ -388,12 +390,13 @@ let handle_control_flow (m:mach) (op:opcode) (operands: operand list) : unit =
   match op with
   | Retq -> handle_data_movement m Popq [Reg Rip]
   | _ -> let operand1 = List.hd operands in
-    (match op with
+    begin match op with
     | Jmp -> store_in_register m Rip (get_num_from_operand m operand1)
     | Callq -> 
       handle_data_movement m Pushq [Reg Rip];
-      store_in_register m Rip (get_num_from_operand m operand1);
-    )
+      store_in_register m Rip (get_num_from_operand m operand1)
+    | _ -> failwith "something is wrong"
+    end
 
 let update_flags (m:mach) (oF:int) (sF:int) (zF:int) : unit = 
   (if -1 = sF then () else m.flags.fs <- sF = 1; 
