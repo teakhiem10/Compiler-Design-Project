@@ -1,6 +1,6 @@
 (executable
  (name main)
- (libraries unix str))
+ (libraries unix str num))
 
 (env
 (dev
