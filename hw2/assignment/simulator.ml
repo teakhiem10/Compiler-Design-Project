@@ -170,6 +170,32 @@ let map_addr (addr:quad) : int option = if addr < mem_bot || addr >= mem_top the
 let get_register_value (m:mach) (reg:reg) : int64 = 
   Array.get m.regs (rind reg)
 
+let store_in_register (m:mach) (reg:reg) (data:int64) : unit =
+  Array.set m.regs (rind reg) data
+
+let get_memory_value (m:mach) (addr:int64) : int64 = 
+  let array_index_option = map_addr addr in
+  match array_index_option with
+  | None -> failwith "Address outside range"
+  | Some array_index -> int64_of_sbytes (Array.sub m.mem array_index 8)
+
+let get_instruction_from_memory (m:mach) : ins = 
+  let array_index_option = mapt_addr (get_register_value m Rip) in
+  match array_index_option with
+  | None -> failwith "Rip points to invalid memory location"
+  | Some array_index -> Array.get m.mem array_index
+
+let store_in_memory (m:mach) (addr:int64) (data:int64): unit = 
+  let sybtes = sbytes_of_int64 data in
+  let array_index_option = map_addr addr in
+  match array_index_option with
+  | None -> failwith "Address outside range"
+  | Some array_index -> 
+    let insert_at_location (index:int) (sbyte:b) : unit = 
+      Array.set m.mem (array_index + index) b
+    in
+    List.iteri insert_at_location sbytes
+
 (* Make all indirect operands into Ind1 *)
 let handle_operands (m:mach) (operands: operand list) : operand list = 
   let handle_operand (op:operand) : operand = 
@@ -230,17 +256,18 @@ let handle_binary_exp (op:opcode) (num1:int64) (num2:int64) : Big_int.big_int =
       | Shrq -> Int64.shift_right_logical num2 amt
     in Big_int.big_int_of_int64 result
   
+let get_num_from_operand: (m:mach) (op:operand): int64 = 
+match op with
+| Imm imm -> imm
+| Reg reg -> get_register_value m reg
+| Ind1 imm -> let optional_index = map_addr imm in 
+  match optional_index with
+  | None   -> failwith "Cannot access memory" 
+  | Some i -> get_memory_value 
 
 let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int64 * int64 * int64 * int64) = 
-  let get_num: operand -> int64  = function 
-    | Imm imm -> imm
-    | Reg reg -> get_register_value m reg
-    | Ind1 imm -> let optional_index = map_addr imm in 
-      match optional_index with
-      | None   -> failwith "Cannot access memory" 
-      | Some i -> Array.get m.mem i
-  in
-  let numbers = List.map get_num operands in
+  let aux =get_num_from_operand m
+  let numbers = List.map aux operands in
   let big_int_result = 
     match op with
     | Negq | Incq | Decq | Notq -> handle_unary_exp op (List.hd numbers)
@@ -273,17 +300,45 @@ let handle_exp (m:mach) (op:opcode) (operands: operand list) : (int64 * int64 * 
   in 
   (of_return, sf_return, zF_return, result)
     
+let handle_data_movement (m:mach) (op:opcode) (operands: operand list) : unit = 
+  let operand1 = List.hd operands in
+  let result = 
+    match op with 
+    | Leaq -> let ind = operand1 in 
+      match ind with
+      | Ind1 imm -> imm
+      | _ -> failwith "Operand should be simplified to Ind1 before passing to this function"
+    | Movq -> get_num_from_operand m operand1
+    | Pushq -> get_num_from_operand m operand1
+    | Popq -> get_memory_value m (get_register_value Rsp)
+  in 
+    match op with 
+    | Leaq | Movq -> 
+      let operand2 = List.nth operands 1 in 
+      match operand2 with
+      | Reg reg -> store_in_register m reg result
+      | Ind1 imm -> store_in_memory m imm result
+      | _ -> failwith "Invalid storage type"
+    | Pushq -> 
+      store_in_register m Rsp (Int64.sub (get_register_value m Rsp) 8L);
+      store_in_memory m (get_register_value m Rsp) result
+    | Popq -> 
+      match operand1 with
+      | Reg reg -> store_in_register m reg result
+      | _ -> failwith "I think this is illegal?"
+
+
 
 
 let step (m:mach) : unit =
-  let ins_bytes_option = map_addr (get_register_value m Rip) in
-  match ins_bytes_option with
-    | None -> failwith "Cannot access memory at this location"
-    | Some ins_bytes ->
-      match ins_bytes with 
-      | InsFrag | Byte -> failwith "Instruction pointer does not point to an instruction"
-      | InsB0 (opcode, operands) -> 
-        let simpler_operands = handle_operands operands in
+  let ins_byte = get_instruction_from_memory m in
+    match ins_byte with 
+    | InsFrag | Byte -> failwith "Instruction pointer does not point to an instruction"
+    | InsB0 (opcode, operands) -> 
+      let simpler_operands = handle_operands operands in
+      match opcode with
+      | Leaq | Movq | Pushq | Popq -> handle_data_movement
+      | _ ->
         let (sF, zF, oF, result) = 
         match opcode with
         | Incq | Decq | Negq | Notq
