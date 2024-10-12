@@ -271,6 +271,13 @@ let handle_unary_exp (op:opcode) (num:int64) : Big_int.big_int =
   | Notq -> Big_int.big_int_of_int64 (Int64.lognot num)
   | _ -> failwith "binary instruction detected:"
 
+let get_logical_int64_operation (op:opcode) : (int64 -> int64 -> int64) = 
+  match op with
+  | Andq -> Int64.logand
+  | Orq -> Int64.logor
+  | Xorq -> Int64.logxor
+  | _ -> failwith "This should only be called with Andq, Orq, or Xorq"
+
 let handle_binary_exp (op:opcode) (num1:int64) (num2:int64) : Big_int.big_int = 
   let b1 = Big_int.big_int_of_int64 num1 in
   let b2 = Big_int.big_int_of_int64 num2 in
@@ -278,9 +285,7 @@ let handle_binary_exp (op:opcode) (num1:int64) (num2:int64) : Big_int.big_int =
   | Addq -> Big_int.add_big_int b2 b1
   | Subq -> Big_int.sub_big_int b2 b1
   | Imulq -> Big_int.mult_big_int b2 b1
-  | Andq -> Big_int.big_int_of_int64(Int64.logand num2 num1)
-  | Orq -> Big_int.or_big_int b2 b1
-  | Xorq -> Big_int.xor_big_int b2 b1
+  | Andq | Orq | Xorq -> Big_int.big_int_of_int64 (get_logical_int64_operation op num2 num1)
   | Sarq | Shlq | Shrq -> 
     let amt = Int64.to_int num1 in
     let result = 
