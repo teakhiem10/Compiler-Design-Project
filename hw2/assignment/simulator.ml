@@ -393,6 +393,7 @@ let handle_control_flow (m:mach) (op:opcode) (operands: operand list) : unit =
     begin match op with
     | Jmp -> store_in_register m Rip (get_num_from_operand m operand1)
     | Callq -> 
+      increment_rip m;
       handle_data_movement m Pushq [Reg Rip];
       store_in_register m Rip (get_num_from_operand m operand1);
     | _ -> failwith "something is wrong"
