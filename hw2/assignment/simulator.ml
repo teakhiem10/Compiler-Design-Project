@@ -471,5 +471,32 @@ failwith "assemble unimplemented"
   Hint: The Array.make, Array.blit, and Array.of_list library functions 
   may be of use.
 *)
+
+let rec set_memory_at_location (mem:mem) (location: quad) (data: sbyte list) : mem = 
+  let data_array = Array.of_list data in
+  let set_sbyte_at_location = fun i b  -> 
+    let index_option = map_addr (Int64.add location (Int64.of_int i)) in
+    match index_option with
+    | None -> failwith "Invalid location in set_memory_at_location"
+    | Some index -> Array.set mem index b;
+  in
+  Array.iteri set_sbyte_at_location data_array;
+  mem
+
+
 let load {entry; text_pos; data_pos; text_seg; data_seg} : mach = 
-failwith "load unimplemented"
+  let max_legal_address = Int64.sub mem_top 8L in
+  let reg_values = fun index _ -> 
+    match index with
+    | 16 -> entry
+    | 7 -> max_legal_address
+    | _ -> 0L
+  in
+  let init_mem = Array.make mem_size (Byte '\x00') in
+  let text_mem = set_memory_at_location init_mem text_pos text_seg in
+  let data_memory = set_memory_at_location text_mem data_pos data_seg in
+  let memory = set_memory_at_location data_memory max_legal_address (sbytes_of_int64 exit_addr) in
+  { flags = {fo = false; fs = false; fz = false}
+  ; regs = Array.mapi reg_values (Array.make nregs 0L)
+  ; mem = memory
+  }
