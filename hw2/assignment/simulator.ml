@@ -476,8 +476,44 @@ exception Redefined_sym of lbl
 
    HINT: List.fold_left and List.fold_right are your friends.
 *)
+type symbol = {lbl : lbl; memory: quad}
+type symbol_table = symbol list
+let count_text_segment (elem:elem) (i:int64): int64 =  
+ begin match elem.asm with
+  | Text instr -> Int64.add (Int64.of_int (List.length instr)) i
+  | _ -> i
+  end
+let calc_text_segments (p:prog) : int64 = 
+          Int64.mul 8L (List.fold_right count_text_segment p 0L)
+let rec get_symbol_table (p:prog) (i:int64) : symbol_table =
+  begin match p,i with
+    | [],_ -> []
+    | ({lbl; global ;asm}::px), _-> let asm_length = 
+                                    begin match asm with
+                                      | Text instr -> Int64.of_int (List.length instr)
+                                      | Data data -> Int64.of_int (List.length data)
+                                    end
+                                  in let next_mem = Int64.add i (Int64.mul asm_length 8L)
+                                    in 
+                                    {lbl = lbl; memory = Int64.add mem_bot i}::
+                                                  (get_symbol_table px next_mem)
+  end
+let rec contains_lbl (table:symbol_table) (s:string): bool = 
+  begin match table with
+    | [] -> false
+    | ({lbl ; _}::tx) -> if lbl = s then
+                            true
+                         else
+                            false || contains_lbl tx s
+  end
+
+let get_frag (instr:ins):sbyte list = failwith "not implemented"
+
 let assemble (p:prog) : exec =
-  failwith "assemble unimplemented"
+  let size_mem_text = calc_text_segments p in
+    let sym_tab = get_symbol_table p 0L in
+    {entry = 0L; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
+      text_seg = []; data_seg = []}
 
 (* Convert an object file into an executable machine state. 
    - allocate the mem array
@@ -492,6 +528,7 @@ let assemble (p:prog) : exec =
    Hint: The Array.make, Array.blit, and Array.of_list library functions 
    may be of use.
 *)
+
 
 let rec set_memory_at_location (mem:mem) (location: quad) (data: sbyte list) : mem = 
   let data_array = Array.of_list data in

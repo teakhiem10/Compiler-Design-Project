@@ -496,10 +496,16 @@ let hard_tests : suite = [
   ]);
   GradedTest ("Hidden End-to-end Hard", 10, [ ])
 ]
+let symbol_table_Hello : symbol_table = [{lbl = "foo"; memory = 0x400000L};
+                                        {lbl = "main"; memory = 0x400018L};
+                                        {lbl = "baz"; memory = 0x400030L}]
 
+let symbol_table_test =  [("symb1", assert_eqf (fun () -> (get_symbol_table helloworld 0L)) symbol_table_Hello)]
+let contain_test =  [("contain1", assert_eqf (fun () -> (contains_lbl symbol_table_Hello "main")) true);
+                     ("contain2", assert_eqf (fun () -> (contains_lbl symbol_table_Hello "told")) false)]
 let manual_tests : suite = [
-  GradedTest ("Manual Tests 1", 5, Sp15_tests.tests);
-  GradedTest ("Hidden Manual Tests 2", 10, [ ]);
+  GradedTest ("Manual Tests 1", 5 , symbol_table_test);
+  GradedTest ("Hidden Manual Tests 2", 5, contain_test);
   GradedTest ("Hidden Manual Tests 3", 10, [ ]);
   GradedTest ("Hidden Manual Tests 4", 10, [ ]);]
 
