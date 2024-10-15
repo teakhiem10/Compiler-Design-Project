@@ -515,7 +515,7 @@ let rec get_lbl (table:symbol_table) (s:string): quad =
   end
 
 
-let check_contain_lbl (sym:symbol_table) (s:string):unit = (*check if it contains lbl*)
+let check_contain_lbl (sym:symbol_table) (s:string):unit = 
   if not(contains_lbl sym s) then
     raise (Undefined_sym s)
 let check_duplicate_lbl (sym:symbol_table) (s:string):unit = 
@@ -532,7 +532,7 @@ let rec get_symbol_table (p:prog): symbol_table =
                                           | Data da-> let get_data_length (d:data) (i:int64): int64 =
                                                             begin match d with
                                                             | Quad _ -> Int64.add 8L i
-                                                            | Asciz s -> Int64.add (Int64.of_int (String.length s)) i
+                                                            | Asciz s -> Int64.add (Int64.of_int ((String.length s) + 1)) i
                                                           end
                                                         in List.fold_right get_data_length da 0L
                                       end
@@ -556,11 +556,8 @@ let get_frag_ins (sym:symbol_table) ((op, args):ins) :sbyte list =
     | Ind3 (Lbl x, y) -> Ind3 (Lit (get_lbl sym x), y) 
     | x -> x 
   end
-  in
-    begin match op with
-      | _ -> (sbytes_of_ins (op, (List.map check args))) (*TODO eq ex.t*)
+in sbytes_of_ins (op, (List.map check args))(*TODO clean up here*)
 
-    end
   
 let get_text_seg (p:prog) (sym:symbol_table): sbyte list =
   let rec helper (rest:prog): sbyte list =
