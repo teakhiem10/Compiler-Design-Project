@@ -586,9 +586,10 @@ let get_data_seg (p:prog) (sym:symbol_table): sbyte list =
 let assemble (p:prog) : exec =
   let size_mem_text = calc_text_segments p in
     let sym_tab = get_symbol_table p in
-      let text_segment = get_text_seg p sym_tab in
-    {entry = 0L; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
-      text_seg = text_segment; data_seg = []}
+      let entry = get_lbl sym_tab"main" in
+        let text_segment = get_text_seg p sym_tab in
+      {entry = entry; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
+        text_seg = text_segment; data_seg = []}
 
 (* Convert an object file into an executable machine state. 
    - allocate the mem array
