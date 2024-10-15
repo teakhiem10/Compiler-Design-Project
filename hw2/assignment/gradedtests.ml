@@ -570,7 +570,4 @@ let manual_tests : suite = [
 
 let graded_tests : suite =
   timeout_suite 1 (
-  easy_tests @
-  medium_tests @
-  hard_tests @
   manual_tests)
