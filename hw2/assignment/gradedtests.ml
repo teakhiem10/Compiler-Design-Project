@@ -500,7 +500,7 @@ let symbol_table_Hello : symbol_table = [{lbl = "foo"; memory = 0x400000L};
                                         {lbl = "main"; memory = 0x400018L};
                                         {lbl = "baz"; memory = 0x400030L}]
 
-let symbol_table_test =  [("symb1", assert_eqf (fun () -> (get_symbol_table helloworld 0L)) symbol_table_Hello)]
+let symbol_table_test =  [("symb1", assert_eqf (fun () -> (get_symbol_table helloworld)) symbol_table_Hello)]
 let contain_test =  [("contain1", assert_eqf (fun () -> (contains_lbl symbol_table_Hello "main")) true);
                      ("contain2", assert_eqf (fun () -> (contains_lbl symbol_table_Hello "told")) false)]
 let manual_tests : suite = [

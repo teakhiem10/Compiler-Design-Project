@@ -485,19 +485,7 @@ let count_text_segment (elem:elem) (i:int64): int64 =
   end
 let calc_text_segments (p:prog) : int64 = 
           Int64.mul 8L (List.fold_right count_text_segment p 0L)
-let rec get_symbol_table (p:prog) (i:int64) : symbol_table =
-  begin match p,i with
-    | [],_ -> []
-    | ({lbl; global ;asm}::px), _-> let asm_length = 
-                                    begin match asm with
-                                      | Text instr -> Int64.of_int (List.length instr)
-                                      | Data data -> Int64.of_int (List.length data)
-                                    end
-                                  in let next_mem = Int64.add i (Int64.mul asm_length 8L)
-                                    in 
-                                    {lbl = lbl; memory = Int64.add mem_bot i}::
-                                                  (get_symbol_table px next_mem)
-  end
+
 let rec contains_lbl (table:symbol_table) (s:string): bool = 
   begin match table with
     | [] -> false
@@ -506,12 +494,100 @@ let rec contains_lbl (table:symbol_table) (s:string): bool =
                          else
                             false || contains_lbl tx s
   end
+let rec get_lbl (table:symbol_table) (s:string): quad = 
+  begin match table with
+    | [] -> raise (Undefined_sym s)
+    | ({lbl ; memory}::tx) -> if lbl = s then
+                                memory
+                              else
+                                get_lbl tx s
+  end
 
-let get_frag (instr:ins):sbyte list = failwith "not implemented"
+
+let check_contain_lbl (sym:symbol_table) (s:string):unit = (*check if it contains lbl*)
+  if not(contains_lbl sym s) then
+    raise (Undefined_sym s)
+let check_duplicate_lbl (sym:symbol_table) (s:string):unit = 
+  if contains_lbl sym s then
+    raise (Redefined_sym s)
+
+let rec get_symbol_table (p:prog): symbol_table =
+  let rec helper (rest:prog) (sym:symbol_table) (i:int64)=
+    begin match rest with
+      | []-> sym
+      | ({lbl; global ;asm}::px)-> let asm_length = 
+                                      begin match asm with
+                                          | Text instr -> Int64.mul 8L (Int64.of_int (List.length instr)) (*TODO modify also for data*)
+                                          | Data da-> let get_data_length (d:data) (i:int64): int64 =
+                                                            begin match d with
+                                                            | Quad _ -> Int64.add 8L i
+                                                            | Asciz s -> Int64.add (Int64.of_int (String.length s)) i
+                                                          end
+                                                        in List.fold_right get_data_length da 0L
+                                      end
+                                      in let next_mem = Int64.add i asm_length
+                                        in
+                                        check_duplicate_lbl sym lbl; 
+                                        helper px (List.append sym [{lbl = lbl; memory = Int64.add mem_bot i}]) next_mem
+      end
+    in helper p [] 0L
+    
+
+
+
+
+
+let get_frag_ins (sym:symbol_table) ((op, args):ins) :sbyte list =
+  let check (arg:operand) : operand =
+  begin match arg with
+    | Imm (Lbl x) -> Imm (Lit (get_lbl sym x))
+    | Ind1 (Lbl x) -> Ind1 (Lit (get_lbl sym x))
+    | Ind3 (Lbl x, y) -> Ind3 (Lit (get_lbl sym x), y) 
+    | x -> x 
+  end
+  in
+    begin match op with
+      | Movq | Pushq | Popq
+      | Leaq
+      | Incq | Decq | Negq | Notq
+      | Addq | Subq | Imulq | Xorq | Orq | Andq
+      | Shlq | Sarq | Shrq
+      | Jmp 
+      | Cmpq  
+      | Callq | Retq -> (sbytes_of_ins (op, (List.map check args))) (*TODO eq ex.t*)
+      | _ -> failwith "not valid instruction"
+    end
+  
+let get_text_seg (p:prog) (sym:symbol_table): (sbyte list) list =
+  let rec helper (rest:prog): (sbyte list) list  =
+    begin match rest with
+      | []-> []
+      | ({lbl; global ;asm}::px) -> begin match asm with
+                                      | Data _ -> [[]]
+                                      | Text txt -> List.append (List.map (get_frag_ins sym) txt) (helper p)
+                                     end
+      end
+    in helper p
+
+
+let get_data_seg (p:prog) (sym:symbol_table): (sbyte list) list =
+  let rec helper (rest:prog): (sbyte list) list  =
+    begin match rest with
+      | []-> []
+      | ({lbl; global ;asm}::px) -> begin match asm with
+                                      | Data data -> [[]]
+                                      | Text _ -> []
+                                     end
+      end
+    in helper p
+
+
 
 let assemble (p:prog) : exec =
   let size_mem_text = calc_text_segments p in
-    let sym_tab = get_symbol_table p 0L in
+    let sym_tab = get_symbol_table p in
+      check_contain_lbl sym_tab "main";
+      (*let text_segment = get_frag_ins*)
     {entry = 0L; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
       text_seg = []; data_seg = []}
 
