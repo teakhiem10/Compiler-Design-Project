@@ -558,24 +558,24 @@ let get_frag_ins (sym:symbol_table) ((op, args):ins) :sbyte list =
       | _ -> failwith "not valid instruction"
     end
   
-let get_text_seg (p:prog) (sym:symbol_table): (sbyte list) list =
-  let rec helper (rest:prog): (sbyte list) list  =
+let get_text_seg (p:prog) (sym:symbol_table): sbyte list =
+  let rec helper (rest:prog): sbyte list =
     begin match rest with
       | []-> []
       | ({lbl; global ;asm}::px) -> begin match asm with
-                                      | Data _ -> [[]]
-                                      | Text txt -> List.append (List.map (get_frag_ins sym) txt) (helper p)
-                                     end
+                                      | Data _ -> []
+                                      | Text txt -> List.append (List.concat_map (get_frag_ins sym) txt) (helper px)
+                                    end
       end
     in helper p
 
 
-let get_data_seg (p:prog) (sym:symbol_table): (sbyte list) list =
-  let rec helper (rest:prog): (sbyte list) list  =
+let get_data_seg (p:prog) (sym:symbol_table): sbyte list =
+  let rec helper (rest:prog): sbyte list  =
     begin match rest with
       | []-> []
       | ({lbl; global ;asm}::px) -> begin match asm with
-                                      | Data data -> [[]]
+                                      | Data data -> []
                                       | Text _ -> []
                                      end
       end
@@ -586,10 +586,9 @@ let get_data_seg (p:prog) (sym:symbol_table): (sbyte list) list =
 let assemble (p:prog) : exec =
   let size_mem_text = calc_text_segments p in
     let sym_tab = get_symbol_table p in
-      check_contain_lbl sym_tab "main";
-      (*let text_segment = get_frag_ins*)
+      let text_segment = get_text_seg p sym_tab in
     {entry = 0L; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
-      text_seg = []; data_seg = []}
+      text_seg = text_segment; data_seg = []}
 
 (* Convert an object file into an executable machine state. 
    - allocate the mem array

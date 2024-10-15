@@ -503,10 +503,18 @@ let symbol_table_Hello : symbol_table = [{lbl = "foo"; memory = 0x400000L};
 let symbol_table_test =  [("symb1", assert_eqf (fun () -> (get_symbol_table helloworld)) symbol_table_Hello)]
 let contain_test =  [("contain1", assert_eqf (fun () -> (contains_lbl symbol_table_Hello "main")) true);
                      ("contain2", assert_eqf (fun () -> (contains_lbl symbol_table_Hello "told")) false)]
+
+let instruct : ins = (Movq, [Ind1 (Lbl "baz"); ~%Rax])
+let text_test =  [("text1", assert_eqf (fun () -> (get_frag_ins symbol_table_Hello instruct)) 
+                                        [InsB0 (Movq, [Ind1 (Lit 0x400030L); Reg Rax]); InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]);
+                  ("text2", assert_eqf (fun () -> (get_frag_ins symbol_table_Hello (Xorq, [~%Rax; ~%Rax]))) 
+                                        [InsB0 (Xorq, [Reg Rax; Reg Rax]); InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]);
+                  ("text3", assert_eqf (fun () -> get_text_seg helloworld symbol_table_Hello) helloworld_textseg)]
+
 let manual_tests : suite = [
   GradedTest ("Manual Tests 1", 5 , symbol_table_test);
   GradedTest ("Hidden Manual Tests 2", 5, contain_test);
-  GradedTest ("Hidden Manual Tests 3", 10, [ ]);
+  GradedTest ("Test Text_segment", 5, text_test);
   GradedTest ("Hidden Manual Tests 4", 10, [ ]);]
 
 
