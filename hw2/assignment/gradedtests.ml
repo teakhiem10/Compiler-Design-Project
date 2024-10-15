@@ -505,17 +505,67 @@ let contain_test =  [("contain1", assert_eqf (fun () -> (contains_lbl symbol_tab
                      ("contain2", assert_eqf (fun () -> (contains_lbl symbol_table_Hello "told")) false)]
 
 let instruct : ins = (Movq, [Ind1 (Lbl "baz"); ~%Rax])
-let text_test =  [("text1", assert_eqf (fun () -> (get_frag_ins symbol_table_Hello instruct)) 
+let sbyte_test =  [("text1", assert_eqf (fun () -> (get_frag_ins symbol_table_Hello instruct)) 
                                         [InsB0 (Movq, [Ind1 (Lit 0x400030L); Reg Rax]); InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]);
                   ("text2", assert_eqf (fun () -> (get_frag_ins symbol_table_Hello (Xorq, [~%Rax; ~%Rax]))) 
                                         [InsB0 (Xorq, [Reg Rax; Reg Rax]); InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]);
-                  ("text3", assert_eqf (fun () -> get_text_seg helloworld symbol_table_Hello) helloworld_textseg)]
-
+                  ("text3", assert_eqf (fun () -> get_text_seg helloworld symbol_table_Hello) helloworld_textseg);
+                  ("data" ^ "1", assert_eqf (fun () -> get_data_seg helloworld symbol_table_Hello) helloworld_dataseg)]
+                  
+let prog_placement =
+  [ data "foo"
+        [ Quad (Lit 42L)
+        ; Quad (Lit 40L)
+        ]
+  ; text "main"
+        [ Leaq, [Ind1 (Lbl "foo"); ~%Rax]
+        ; Retq, []
+        ]
+  ]
+  let prog_leaq_ind2 =
+    [ data "foo"
+          [ Quad (Lit 42L)
+          ; Quad (Lit 40L)
+          ]
+    ; text "main"
+          [ Movq, [~$$"foo"; ~%Rax]
+          ; Leaq, [Ind2 Rax; ~%Rax]
+          ; Retq, [] (* should return mem_bot + 24 (or + 0x16) *)
+          ]
+    ]
+  let prog_mov_ind3 =
+    [ data "foo"
+          [ Quad (Lit 420L)
+          ; Quad (Lit 39L)
+          ]
+    ; text "main"
+          [ Movq, [(Imm (Lbl "foo")); ~%Rax]
+          ; Movq, [(Ind3 (Lit 8L, Rax)); ~%Rax]
+          ; Retq, []
+          ]
+    ]
+    let prog_dec_reg =
+      [ data "foo"
+            [ Quad (Lit 42L)
+            ; Quad (Lit 40L)
+            ]
+      ; text "main"
+            [ Movq, [~$12; ~%Rax] (* move immidiate to reg*)
+            ; Decq, [~%Rax]
+            ; Retq, []
+            ]
+      ]
+  
+  let part2_test =  [("prog_placement", program_test prog_placement 0x400010L);
+                     ("prog_leaq_ind2", program_test prog_leaq_ind2 0x400018L);
+                     ("prog_mov_ind3", program_test prog_mov_ind3 39L)
+                     ; ("prog_dec_reg", program_test prog_dec_reg 11L)
+                      ]
 let manual_tests : suite = [
   GradedTest ("Manual Tests 1", 5 , symbol_table_test);
   GradedTest ("Hidden Manual Tests 2", 5, contain_test);
-  GradedTest ("Test Text_segment", 5, text_test);
-  GradedTest ("Hidden Manual Tests 4", 10, [ ]);]
+  GradedTest ("Test Text_segment", 5, sbyte_test);
+  GradedTest ("Part2", 10,part2_test );]
 
 
 let graded_tests : suite =

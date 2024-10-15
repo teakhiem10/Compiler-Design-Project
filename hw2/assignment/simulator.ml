@@ -140,7 +140,16 @@ let sbytes_of_data : data -> sbyte list = function
      [if !debug_simulator then print_endline @@ string_of_ins u; ...]
 
 *)
-let debug_simulator = ref false
+let debug_simulator = ref true
+
+
+let rec string_of_seg (b:(sbyte list)) : string =
+  begin match b with
+  | [] -> ""
+  | (Byte s) :: bx -> "Byte " ^ Char.escaped s ^ "; " ^ (string_of_seg bx)
+  | (InsB0 instr):: bx-> "InsB0 " ^ (string_of_ins instr) ^ string_of_seg bx
+  | (InsFrag):: bx -> "InsFrag; " ^ string_of_seg bx 
+  end
 
 (* Interpret a condition code with respect to the given flags. *)
 let interp_cnd {fo; fs; fz} : cnd -> bool = fun (c:cnd) -> 
@@ -483,6 +492,8 @@ let count_text_segment (elem:elem) (i:int64): int64 =
   | Text instr -> Int64.add (Int64.of_int (List.length instr)) i
   | _ -> i
   end
+
+
 let calc_text_segments (p:prog) : int64 = 
           Int64.mul 8L (List.fold_right count_text_segment p 0L)
 
@@ -547,15 +558,8 @@ let get_frag_ins (sym:symbol_table) ((op, args):ins) :sbyte list =
   end
   in
     begin match op with
-      | Movq | Pushq | Popq
-      | Leaq
-      | Incq | Decq | Negq | Notq
-      | Addq | Subq | Imulq | Xorq | Orq | Andq
-      | Shlq | Sarq | Shrq
-      | Jmp 
-      | Cmpq  
-      | Callq | Retq -> (sbytes_of_ins (op, (List.map check args))) (*TODO eq ex.t*)
-      | _ -> failwith "not valid instruction"
+      | _ -> (sbytes_of_ins (op, (List.map check args))) (*TODO eq ex.t*)
+
     end
   
 let get_text_seg (p:prog) (sym:symbol_table): sbyte list =
@@ -563,20 +567,25 @@ let get_text_seg (p:prog) (sym:symbol_table): sbyte list =
     begin match rest with
       | []-> []
       | ({lbl; global ;asm}::px) -> begin match asm with
-                                      | Data _ -> []
+                                      | Data _ -> helper px
                                       | Text txt -> List.append (List.concat_map (get_frag_ins sym) txt) (helper px)
                                     end
       end
     in helper p
-
+let get_frag_data (sym:symbol_table) (d:data) : sbyte list =
+  begin match d with
+  | Asciz s -> sbytes_of_string s
+  | Quad (Lbl a) -> sbytes_of_int64 (get_lbl sym a)
+  | Quad (Lit i) -> sbytes_of_int64 i
+  end
 
 let get_data_seg (p:prog) (sym:symbol_table): sbyte list =
   let rec helper (rest:prog): sbyte list  =
     begin match rest with
       | []-> []
       | ({lbl; global ;asm}::px) -> begin match asm with
-                                      | Data data -> []
-                                      | Text _ -> []
+                                      | Data d -> List.append (List.concat_map (get_frag_data sym) d) (helper px)
+                                      | Text _ -> helper px
                                      end
       end
     in helper p
@@ -588,8 +597,9 @@ let assemble (p:prog) : exec =
     let sym_tab = get_symbol_table p in
       let entry = get_lbl sym_tab"main" in
         let text_segment = get_text_seg p sym_tab in
-      {entry = entry; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
-        text_seg = text_segment; data_seg = []}
+          let data_segment = get_data_seg p sym_tab in
+            {entry = entry; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
+              text_seg = text_segment; data_seg = data_segment}
 
 (* Convert an object file into an executable machine state. 
    - allocate the mem array
