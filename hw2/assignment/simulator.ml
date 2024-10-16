@@ -147,7 +147,7 @@ let rec string_of_seg (b:(sbyte list)) : string =
   begin match b with
   | [] -> ""
   | (Byte s) :: bx -> "Byte " ^ Char.escaped s ^ "; " ^ (string_of_seg bx)
-  | (InsB0 instr):: bx-> "InsB0 " ^ (string_of_ins instr) ^ string_of_seg bx
+  | (InsB0 instr):: bx-> "InsB0 " ^ (string_of_ins instr) ^ ";" ^ string_of_seg bx
   | (InsFrag):: bx -> "InsFrag; " ^ string_of_seg bx 
   end
 
@@ -592,9 +592,15 @@ let get_data_seg (p:prog) (sym:symbol_table): sbyte list =
 let assemble (p:prog) : exec =
   let size_mem_text = calc_text_segments p in
     let sym_tab = get_symbol_table p in
-      let entry = get_lbl sym_tab"main" in
+      let entry = get_lbl sym_tab "main" in
         let text_segment = get_text_seg p sym_tab in
           let data_segment = get_data_seg p sym_tab in
+          (if !debug_simulator then 
+            print_endline @@ "--------------------";
+            print_endline @@ Int64.to_string entry;
+            print_endline @@ Int64.to_string (Int64.add mem_bot size_mem_text);
+            print_endline @@ string_of_seg text_segment;
+            print_endline @@ string_of_seg data_segment;);
             {entry = entry; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
               text_seg = text_segment; data_seg = data_segment}
 
