@@ -145,10 +145,10 @@ let debug_simulator = ref true
 
 let rec string_of_seg (b:(sbyte list)) : string =
   begin match b with
-  | [] -> ""
-  | (Byte s) :: bx -> "Byte " ^ Char.escaped s ^ "; " ^ (string_of_seg bx)
-  | (InsB0 instr):: bx-> "InsB0 " ^ (string_of_ins instr) ^ ";" ^ string_of_seg bx
-  | (InsFrag):: bx -> "InsFrag; " ^ string_of_seg bx 
+    | [] -> ""
+    | (Byte s) :: bx -> "Byte " ^ Char.escaped s ^ "; " ^ (string_of_seg bx)
+    | (InsB0 instr):: bx-> "InsB0 " ^ (string_of_ins instr) ^ ";" ^ string_of_seg bx
+    | (InsFrag):: bx -> "InsFrag; " ^ string_of_seg bx 
   end
 
 (* Interpret a condition code with respect to the given flags. *)
@@ -491,40 +491,40 @@ type symbol_table = symbol list
 type segment = {lbl: lbl; length: quad}
 
 let count_text_segment (elem:elem) (i:int64): int64 =  
- begin match elem.asm with
-  | Text instr -> Int64.add (Int64.of_int (List.length instr)) i
-  | _ -> i
+  begin match elem.asm with
+    | Text instr -> Int64.add (Int64.of_int (List.length instr)) i
+    | _ -> i
   end
 
 
 let calc_text_segments (p:prog) : int64 = 
-          Int64.mul 8L (List.fold_right count_text_segment p 0L)
+  Int64.mul 8L (List.fold_right count_text_segment p 0L)
 
 let rec contains_lbl_segment (table:segment list) (s:string): bool = 
   begin match table with
     | [] -> false
     | ({lbl ; _}::tx) -> if lbl = s then
-                            true
-                         else
-                            false || contains_lbl_segment tx s
+        true
+      else
+        false || contains_lbl_segment tx s
   end
 
 let rec contains_lbl (table:symbol_table) (s:string): bool = 
   begin match table with
     | [] -> false
     | ({lbl ; _}::tx) -> if lbl = s then
-                            true
-                          else
-                            false || contains_lbl tx s
-    end
+        true
+      else
+        false || contains_lbl tx s
+  end
 
 let rec get_lbl (table:symbol_table) (s:string): quad = 
   begin match table with
     | [] -> raise (Undefined_sym s)
     | ({lbl ; memory}::tx) -> if lbl = s then
-                                memory
-                              else
-                                get_lbl tx s
+        memory
+      else
+        get_lbl tx s
   end
 
 let check_contain_lbl (sym:symbol_table) (s:string):unit = 
@@ -532,7 +532,7 @@ let check_contain_lbl (sym:symbol_table) (s:string):unit =
     raise (Undefined_sym s)
 let check_duplicate_lbl (text_segments: segment list) (data_segments: segment list) (s:string):unit = 
   if (contains_lbl_segment text_segments s) 
-    || (contains_lbl_segment data_segments s) then
+  || (contains_lbl_segment data_segments s) then
     raise (Redefined_sym s)
 
 let string_of_symbol_table (st: symbol_table) : string = 
@@ -545,40 +545,40 @@ let rec get_symbol_table (p:prog): symbol_table =
     begin match rest with
       | []-> (text_segments, data_segments)
       | ({lbl; global ;asm}::px)-> let asm_length = 
-                                      begin match asm with
-                                          | Text instr -> Int64.mul 8L (Int64.of_int (List.length instr)) (*TODO modify also for data*)
-                                          | Data da-> let get_data_length (d:data) (i:int64): int64 =
-                                                            begin match d with
-                                                            | Quad _ -> Int64.add 8L i
-                                                            | Asciz s -> Int64.add (Int64.of_int ((String.length s) + 1)) i
-                                                          end
-                                                        in List.fold_right get_data_length da 0L
-                                      end
-                                        in
-                                        let new_text_segments = 
-                                        begin match asm with
-                                          | Text _ -> List.append text_segments [{lbl = lbl; length = asm_length}]
-                                          | Data _ -> text_segments
-                                        end in
-                                        let new_data_segments  = 
-                                        begin match asm with
-                                          | Text _ -> data_segments
-                                          | Data _ -> List.append data_segments [{lbl = lbl; length = asm_length}]
-                                        end in
-                                        check_duplicate_lbl text_segments data_segments lbl; 
-                                        helper px new_text_segments new_data_segments
-      end
-    in 
-    let (text, data) = helper p [] [] in
-    let rec table_builder (table: symbol_table) (segments: segment list) (next_memory: quad) = 
-      match segments with
-      | [] -> (table, next_memory)
-      | ({lbl; length}::sgx) -> table_builder (List.append table [{lbl = lbl; memory = next_memory}]) sgx (Int64.add next_memory length)
-    in
-    let (text_table, data_start) = table_builder [] text mem_bot in
-    let (final_table, _) = table_builder text_table data data_start in
-    final_table
-    
+                                     begin match asm with
+                                       | Text instr -> Int64.mul 8L (Int64.of_int (List.length instr)) (*TODO modify also for data*)
+                                       | Data da-> let get_data_length (d:data) (i:int64): int64 =
+                                                     begin match d with
+                                                       | Quad _ -> Int64.add 8L i
+                                                       | Asciz s -> Int64.add (Int64.of_int ((String.length s) + 1)) i
+                                                     end
+                                         in List.fold_right get_data_length da 0L
+                                     end
+        in
+        let new_text_segments = 
+          begin match asm with
+            | Text _ -> List.append text_segments [{lbl = lbl; length = asm_length}]
+            | Data _ -> text_segments
+          end in
+        let new_data_segments  = 
+          begin match asm with
+            | Text _ -> data_segments
+            | Data _ -> List.append data_segments [{lbl = lbl; length = asm_length}]
+          end in
+        check_duplicate_lbl text_segments data_segments lbl; 
+        helper px new_text_segments new_data_segments
+    end
+  in 
+  let (text, data) = helper p [] [] in
+  let rec table_builder (table: symbol_table) (segments: segment list) (next_memory: quad) = 
+    match segments with
+    | [] -> (table, next_memory)
+    | ({lbl; length}::sgx) -> table_builder (List.append table [{lbl = lbl; memory = next_memory}]) sgx (Int64.add next_memory length)
+  in
+  let (text_table, data_start) = table_builder [] text mem_bot in
+  let (final_table, _) = table_builder text_table data data_start in
+  final_table
+
 
 
 
@@ -586,30 +586,30 @@ let rec get_symbol_table (p:prog): symbol_table =
 
 let get_frag_ins (sym:symbol_table) ((op, args):ins) :sbyte list =
   let check (arg:operand) : operand =
-  begin match arg with
-    | Imm (Lbl x) -> Imm (Lit (get_lbl sym x))
-    | Ind1 (Lbl x) -> Ind1 (Lit (get_lbl sym x))
-    | Ind3 (Lbl x, y) -> Ind3 (Lit (get_lbl sym x), y) 
-    | x -> x 
-  end
-in sbytes_of_ins (op, (List.map check args))(*TODO clean up here*)
+    begin match arg with
+      | Imm (Lbl x) -> Imm (Lit (get_lbl sym x))
+      | Ind1 (Lbl x) -> Ind1 (Lit (get_lbl sym x))
+      | Ind3 (Lbl x, y) -> Ind3 (Lit (get_lbl sym x), y) 
+      | x -> x 
+    end
+  in sbytes_of_ins (op, (List.map check args))(*TODO clean up here*)
 
-  
+
 let get_text_seg (p:prog) (sym:symbol_table): sbyte list =
   let rec helper (rest:prog): sbyte list =
     begin match rest with
       | []-> []
       | ({lbl; global ;asm}::px) -> begin match asm with
-                                      | Data _ -> helper px
-                                      | Text txt -> List.append (List.concat_map (get_frag_ins sym) txt) (helper px)
-                                    end
-      end
-    in helper p
+          | Data _ -> helper px
+          | Text txt -> List.append (List.concat_map (get_frag_ins sym) txt) (helper px)
+        end
+    end
+  in helper p
 let get_frag_data (sym:symbol_table) (d:data) : sbyte list =
   begin match d with
-  | Asciz s -> sbytes_of_string s
-  | Quad (Lbl a) -> sbytes_of_int64 (get_lbl sym a)
-  | Quad (Lit i) -> sbytes_of_int64 i
+    | Asciz s -> sbytes_of_string s
+    | Quad (Lbl a) -> sbytes_of_int64 (get_lbl sym a)
+    | Quad (Lit i) -> sbytes_of_int64 i
   end
 
 let get_data_seg (p:prog) (sym:symbol_table): sbyte list =
@@ -617,29 +617,29 @@ let get_data_seg (p:prog) (sym:symbol_table): sbyte list =
     begin match rest with
       | []-> []
       | ({lbl; global ;asm}::px) -> begin match asm with
-                                      | Data d -> List.append (List.concat_map (get_frag_data sym) d) (helper px)
-                                      | Text _ -> helper px
-                                     end
-      end
-    in helper p
+          | Data d -> List.append (List.concat_map (get_frag_data sym) d) (helper px)
+          | Text _ -> helper px
+        end
+    end
+  in helper p
 
 
 
 let assemble (p:prog) : exec =
   let size_mem_text = calc_text_segments p in
-    let sym_tab = get_symbol_table p in
-      let entry = get_lbl sym_tab "main" in
-        let text_segment = get_text_seg p sym_tab in
-          let data_segment = get_data_seg p sym_tab in
-          (if !debug_simulator then 
-            print_endline @@ "--------------------";
-            print_endline @@ Int64.to_string entry;
-            print_endline @@ Int64.to_string (Int64.add mem_bot size_mem_text);
-            print_endline @@ Int64.to_string size_mem_text;
-            print_endline @@ string_of_seg text_segment;
-            print_endline @@ string_of_seg data_segment;);
-            {entry = entry; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
-              text_seg = text_segment; data_seg = data_segment}
+  let sym_tab = get_symbol_table p in
+  let entry = get_lbl sym_tab "main" in
+  let text_segment = get_text_seg p sym_tab in
+  let data_segment = get_data_seg p sym_tab in
+  (if !debug_simulator then 
+     print_endline @@ "--------------------";
+   print_endline @@ Int64.to_string entry;
+   print_endline @@ Int64.to_string (Int64.add mem_bot size_mem_text);
+   print_endline @@ Int64.to_string size_mem_text;
+   print_endline @@ string_of_seg text_segment;
+   print_endline @@ string_of_seg data_segment;);
+  {entry = entry; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
+   text_seg = text_segment; data_seg = data_segment}
 
 (* Convert an object file into an executable machine state. 
    - allocate the mem array
