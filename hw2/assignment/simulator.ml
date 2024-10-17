@@ -487,6 +487,9 @@ exception Redefined_sym of lbl
 *)
 type symbol = {lbl : lbl; memory: quad}
 type symbol_table = symbol list
+
+type segment = {lbl: lbl; length: quad}
+
 let count_text_segment (elem:elem) (i:int64): int64 =  
  begin match elem.asm with
   | Text instr -> Int64.add (Int64.of_int (List.length instr)) i
@@ -497,14 +500,24 @@ let count_text_segment (elem:elem) (i:int64): int64 =
 let calc_text_segments (p:prog) : int64 = 
           Int64.mul 8L (List.fold_right count_text_segment p 0L)
 
-let rec contains_lbl (table:symbol_table) (s:string): bool = 
+let rec contains_lbl_segment (table:segment list) (s:string): bool = 
   begin match table with
     | [] -> false
     | ({lbl ; _}::tx) -> if lbl = s then
                             true
                          else
-                            false || contains_lbl tx s
+                            false || contains_lbl_segment tx s
   end
+
+let rec contains_lbl (table:symbol_table) (s:string): bool = 
+  begin match table with
+    | [] -> false
+    | ({lbl ; _}::tx) -> if lbl = s then
+                            true
+                          else
+                            false || contains_lbl tx s
+    end
+
 let rec get_lbl (table:symbol_table) (s:string): quad = 
   begin match table with
     | [] -> raise (Undefined_sym s)
@@ -514,18 +527,23 @@ let rec get_lbl (table:symbol_table) (s:string): quad =
                                 get_lbl tx s
   end
 
-
 let check_contain_lbl (sym:symbol_table) (s:string):unit = 
   if not(contains_lbl sym s) then
     raise (Undefined_sym s)
-let check_duplicate_lbl (sym:symbol_table) (s:string):unit = 
-  if contains_lbl sym s then
+let check_duplicate_lbl (text_segments: segment list) (data_segments: segment list) (s:string):unit = 
+  if (contains_lbl_segment text_segments s) 
+    || (contains_lbl_segment data_segments s) then
     raise (Redefined_sym s)
 
+let string_of_symbol_table (st: symbol_table) : string = 
+  match st with
+  | [] -> ""
+  | ({lbl; memory}:: sx) -> "label: " ^ lbl ^ ", memory: " ^ (Int64.to_string memory) ^ "; "
+
 let rec get_symbol_table (p:prog): symbol_table =
-  let rec helper (rest:prog) (sym:symbol_table) (i:int64)=
+  let rec helper (rest:prog) (text_segments: segment list) (data_segments: segment list) =
     begin match rest with
-      | []-> sym
+      | []-> (text_segments, data_segments)
       | ({lbl; global ;asm}::px)-> let asm_length = 
                                       begin match asm with
                                           | Text instr -> Int64.mul 8L (Int64.of_int (List.length instr)) (*TODO modify also for data*)
@@ -536,12 +554,33 @@ let rec get_symbol_table (p:prog): symbol_table =
                                                           end
                                                         in List.fold_right get_data_length da 0L
                                       end
-                                      in let next_mem = Int64.add i asm_length
                                         in
-                                        check_duplicate_lbl sym lbl; 
-                                        helper px (List.append sym [{lbl = lbl; memory = Int64.add mem_bot i}]) next_mem
+                                        let new_text_segments = 
+                                        begin match asm with
+                                          | Text _ -> List.append text_segments [{lbl = lbl; length = asm_length}]
+                                          | Data _ -> text_segments
+                                        end in
+                                        let new_data_segments  = 
+                                        begin match asm with
+                                          | Text _ -> data_segments
+                                          | Data _ -> List.append data_segments [{lbl = lbl; length = asm_length}]
+                                        end in
+                                        check_duplicate_lbl text_segments data_segments lbl; 
+                                        (*print_endline @@ lbl ^ ", " ^ (Int64.to_string asm_length);*)
+                                        helper px new_text_segments new_data_segments
       end
-    in helper p [] 0L
+    in 
+    let (text, data) = helper p [] [] in
+    let rec table_builder (table: symbol_table) (segments: segment list) (next_memory: quad) = 
+      match segments with
+      | [] -> (table, next_memory)
+      | ({lbl; length}::sgx) -> table_builder (List.append table [{lbl = lbl; memory = next_memory}]) sgx (Int64.add next_memory length)
+    in
+    let (text_table, data_start) = table_builder [] text mem_bot in
+    let (final_table, _) = table_builder text_table data data_start in
+    print_endline @@ string_of_int (List.length final_table);
+    print_endline @@ string_of_symbol_table final_table;
+    final_table
     
 
 
@@ -599,6 +638,7 @@ let assemble (p:prog) : exec =
             print_endline @@ "--------------------";
             print_endline @@ Int64.to_string entry;
             print_endline @@ Int64.to_string (Int64.add mem_bot size_mem_text);
+            print_endline @@ Int64.to_string size_mem_text;
             print_endline @@ string_of_seg text_segment;
             print_endline @@ string_of_seg data_segment;);
             {entry = entry; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
