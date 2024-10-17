@@ -566,7 +566,6 @@ let rec get_symbol_table (p:prog): symbol_table =
                                           | Data _ -> List.append data_segments [{lbl = lbl; length = asm_length}]
                                         end in
                                         check_duplicate_lbl text_segments data_segments lbl; 
-                                        (*print_endline @@ lbl ^ ", " ^ (Int64.to_string asm_length);*)
                                         helper px new_text_segments new_data_segments
       end
     in 
@@ -578,8 +577,6 @@ let rec get_symbol_table (p:prog): symbol_table =
     in
     let (text_table, data_start) = table_builder [] text mem_bot in
     let (final_table, _) = table_builder text_table data data_start in
-    print_endline @@ string_of_int (List.length final_table);
-    print_endline @@ string_of_symbol_table final_table;
     final_table
     
 
