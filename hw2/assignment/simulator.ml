@@ -140,7 +140,7 @@ let sbytes_of_data : data -> sbyte list = function
      [if !debug_simulator then print_endline @@ string_of_ins u; ...]
 
 *)
-let debug_simulator = ref true
+let debug_simulator = ref false
 
 
 let rec string_of_seg (b:(sbyte list)) : string =
@@ -632,12 +632,12 @@ let assemble (p:prog) : exec =
   let text_segment = get_text_seg p sym_tab in
   let data_segment = get_data_seg p sym_tab in
   (if !debug_simulator then 
-     print_endline @@ "--------------------";
+    (print_endline @@ "--------------------";
    print_endline @@ Int64.to_string entry;
    print_endline @@ Int64.to_string (Int64.add mem_bot size_mem_text);
    print_endline @@ Int64.to_string size_mem_text;
    print_endline @@ string_of_seg text_segment;
-   print_endline @@ string_of_seg data_segment;);
+   print_endline @@ string_of_seg data_segment;));
   {entry = entry; text_pos = mem_bot; data_pos = Int64.add mem_bot size_mem_text; 
    text_seg = text_segment; data_seg = data_segment}
 

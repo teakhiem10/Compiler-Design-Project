@@ -1,4 +1,4 @@
-DIRS := util,grading,x86
+DIRS := util,grading,x86,student
 LIBS := unix,str
 SUBMIT := simulator.ml team.txt
 OTHER := gradedtests.ml studenttests.ml main.ml  sharedtests.ml
