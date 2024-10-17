@@ -562,11 +562,31 @@ let prog_placement =
                      ("prog_mov_ind3", program_test prog_mov_ind3 39L)
                      ; ("prog_dec_reg", program_test prog_dec_reg 11L)
                       ]
+
+
+
+let should_not_step (m:mach) () =
+    try ignore (step m);
+        failwith "Should not step (Wrong register / memory accesses)"
+    with
+        | Failure a -> if String.equal a "Should not step (Wrong register / memory accesses)" then failwith a else ()
+        | x -> failwith (Printexc.to_string x) 
+
+let invalid_tests = [
+    ("invalid_shift_1", should_not_step (test_machine [InsB0 (Shrq, [Reg Rax; Reg Rbx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]));
+    ("invalid_shift_2", should_not_step (test_machine [InsB0 (Shrq, [Reg Rax; Reg R08]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]));
+    ("invalid_shift_4", should_not_step (test_machine [InsB0 (Shlq, [Reg Rax; Reg Rbx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]));
+    ("invalid_shift_5", should_not_step (test_machine [InsB0 (Shlq, [Reg Rax; Reg R08]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]));
+    ("invalid_shift_7", should_not_step (test_machine [InsB0 (Sarq, [Reg Rax; Reg Rbx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]));
+    ("invalid_shift_8", should_not_step (test_machine [InsB0 (Sarq, [Reg Rax; Reg R08]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]));
+    ]
 let manual_tests : suite = [
   GradedTest ("Manual Tests 1", 5 , symbol_table_test);
   GradedTest ("Hidden Manual Tests 2", 5, contain_test);
   GradedTest ("Test Text_segment", 5, sbyte_test);
-  GradedTest ("Part2", 10,part2_test );]
+  GradedTest ("Invalid", 10,invalid_tests);]
+
+ 
 
 
 let graded_tests : suite =
