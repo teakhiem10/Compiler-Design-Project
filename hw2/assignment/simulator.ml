@@ -187,20 +187,20 @@ let store_in_register (m:mach) (reg:reg) (data:int64) : unit =
 let get_memory_value (m:mach) (addr:int64) : int64 = 
   let array_index_option = map_addr addr in
   match array_index_option with
-  | None -> failwith "Address outside range"
+  | None -> raise X86lite_segfault
   | Some array_index -> int64_of_sbytes (Array.to_list (Array.sub m.mem array_index 8))
 
 let get_instruction_from_memory (m:mach) : sbyte = 
   let array_index_option = map_addr (get_register_value m Rip) in
   match array_index_option with
-  | None -> failwith "Rip points to invalid memory location"
+  | None -> raise X86lite_segfault
   | Some array_index -> Array.get m.mem array_index
 
 let store_in_memory (m:mach) (addr:int64) (data:int64): unit = 
   let sbytes = sbytes_of_int64 data in
   let array_index_option = map_addr addr in
   match array_index_option with
-  | None -> failwith "Address outside range"
+  | None -> raise X86lite_segfault
   | Some array_index -> 
     let insert_at_location = fun (index:int) (b:sbyte) : unit ->
       Array.set m.mem (array_index + index) b

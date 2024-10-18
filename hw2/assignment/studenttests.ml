@@ -1,12 +1,7 @@
 open Assert
 open X86
 open Simulator
-open Xor_test
-open Add_test
-open Sub_test
-open Shift_test
-open Invalid_test
-open Kek
+
 
 (* You can use this file for additional test cases to help your *)
 (* implementation.                                              *)

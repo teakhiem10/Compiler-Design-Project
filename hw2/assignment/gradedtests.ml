@@ -584,11 +584,14 @@ let manual_tests : suite = [
   GradedTest ("Manual Tests 1", 5 , symbol_table_test);
   GradedTest ("Hidden Manual Tests 2", 5, contain_test);
   GradedTest ("Test Text_segment", 5, sbyte_test);
-  GradedTest ("Invalid", 10,invalid_tests);]
+  GradedTest ("Invalid", 10,[]);]
 
  
 
 
 let graded_tests : suite =
   timeout_suite 1 (
-  manual_tests)
+  easy_tests @
+  medium_tests @
+  hard_tests @
+  easy_tests)

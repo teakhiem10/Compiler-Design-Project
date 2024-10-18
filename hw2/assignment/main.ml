@@ -7,7 +7,7 @@ exception Ran_tests
 let worklist = ref []
 
 let slim_suite = ref (timeout_suite 10 (Studenttests.provided_tests @ Gradedtests.graded_tests))
-let full_suite = ref (timeout_suite 10 (Studenttests.provided_tests @ Gradedtests.graded_tests @ Sharedtests.shared_suite))
+let full_suite = ref (timeout_suite 10 (Studenttests.provided_tests @ Gradedtests.graded_tests @ Sharedtests.shared_suite @ [Sp15_tests.other_team_tests]))
 
 let exec_tests (suite : suite ref) =
   let o = run_suite !suite in
