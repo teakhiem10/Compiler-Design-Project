@@ -249,8 +249,18 @@ let compile_lbl_block fn lbl ctxt blk : elem =
 
    [ NOTE: the first six arguments are numbered 0 .. 5 ]
 *)
+
 let arg_loc (n : int) : operand =
-failwith "arg_loc not implemented"
+  begin match n with
+  | 0 -> Reg Rdi
+  | 1 -> Reg Rsi
+  | 2 -> Reg Rdx
+  | 3 -> Reg Rcx
+  | 4 -> Reg R08
+  | 5 -> Reg R09
+  | _ -> let offset = Int64.mul (Int64.sub (Int64.of_int n) 4L) 8L in 
+              Ind3 (Lit offset, Rbp)
+  end
 
 
 (* We suggest that you create a helper function that computes the
@@ -262,8 +272,29 @@ failwith "arg_loc not implemented"
    - see the discussion about locals
 
 *)
-let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
-failwith "stack_layout not implemented"
+let right_instr (i:insn) : bool = 
+  begin match i with
+  | Binop _| Alloca _ | Load _ | Icmp _
+  | Call _ | Bitcast _ | Gep _ -> true
+  | _ -> false
+  end
+
+
+let rec stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
+  let rec helper (args : uid list) ((block, lbled_blocks):cfg) (n:int64) : layout =
+    let curr_stack =  Ind3(Lit (Int64.mul n (-8L)), Rbp) in
+    begin match args, block, lbled_blocks with
+    | [],{insns = []; _},[] -> []
+    | [], {insns=[]; _ }, (_, next)::xs -> helper [] (next,xs) n
+    | [], {insns=((id,instr)::xs); term }, _ -> let new_block : block = {insns = xs; term = term} in 
+                                            if right_instr instr then
+                                              (id, curr_stack) :: (helper args (new_block, lbled_blocks) (Int64.add n 1L))
+                                            else
+                                              helper args (new_block, lbled_blocks) (Int64.add n 1L)
+
+    | (arg :: x),_,_ -> (arg, curr_stack) :: (helper x (block, lbled_blocks) (Int64.add n 1L))
+    end
+  in helper args (block, lbled_blocks) 1L
 
 (* The code for the entry-point of a function must do several things:
 

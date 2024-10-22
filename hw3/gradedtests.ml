@@ -21,7 +21,8 @@ let size_ty_tests =
   ]
 
 let arg_loc_tests =
-  []
+  [("arg_loc1", assert_eqf (fun () -> arg_loc 1) (Reg Rsi));
+   ("arg_loc2", assert_eqf (fun () -> arg_loc 6) (Ind3 (Lit 16L, Rbp)));]
 
 let exec_e2e_ast ll_ast args extra_files =
   let output_path = !Platform.output_path in
