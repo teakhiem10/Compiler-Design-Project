@@ -284,9 +284,9 @@ let rec stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
   let rec helper (args : uid list) ((block, lbled_blocks):cfg) (n:int64) : layout =
     let curr_stack =  Ind3(Lit (Int64.mul n (-8L)), Rbp) in
     begin match args, block, lbled_blocks with
-    | [],{insns = []; _},[] -> []
-    | [], {insns=[]; _ }, (_, next)::xs -> helper [] (next,xs) n
-    | [], {insns=((id,instr)::xs); term }, _ -> let new_block : block = {insns = xs; term = term} in 
+    | [], {insns = []; _},[] -> []
+    | [], {insns = []; _ }, (_, next)::xs -> helper [] (next,xs) n
+    | [], {insns = ((id,instr)::xs); term }, _ -> let new_block : block = {insns = xs; term = term} in 
                                             if right_instr instr then
                                               (id, curr_stack) :: (helper args (new_block, lbled_blocks) (Int64.add n 1L))
                                             else
@@ -313,7 +313,8 @@ let rec stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
      to hold all of the local stack slots.
 *)
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
-failwith "compile_fdecl unimplemented"
+let st_layout = 0L
+in failwith "compile not"
 
 
 
