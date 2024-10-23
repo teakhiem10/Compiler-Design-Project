@@ -312,17 +312,17 @@ let rec stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
    - the function entry code should allocate the stack storage needed
      to hold all of the local stack slots.
 *)
-let make_entry_instr (arg: uid list) (l:layout) : elem =
+let make_entry_instr (arg: uid list) (l:layout) (name:string): elem =
   let rec helper (rest: uid list) (i:int) : ins list =
     begin match rest with
       | [] -> []
       | x::xs -> (Movq, [arg_loc i; lookup l x]):: helper xs (i+1) (*only arguments copy*)
     end
-  in Asm.text "entry" (helper arg 0)
+  in Asm.text name (helper arg 0)
 
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
 let st_layout = stack_layout f_param f_cfg
-in [make_entry_instr f_param st_layout]
+in [make_entry_instr f_param st_layout name]
 
 
 
