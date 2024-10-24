@@ -22,7 +22,12 @@ let compile_cnd = function
   | Ll.Sgt -> X86.Gt
   | Ll.Sge -> X86.Ge
 
-
+let string_of_ll_operand (op:Ll.operand) : string = 
+  match op with 
+  | Null -> "Null"
+  | Const num -> Int64.to_string num
+  | Gid gid -> Printf.sprintf "Gid %s" gid
+  | Id uid -> Printf.sprintf "Uid %s" uid
 
 (* locals and layout -------------------------------------------------------- *)
 
@@ -236,6 +241,48 @@ let compile_bop (bop:bop) (temp1: operand) (temp2:operand): X86.ins list =
     | Ashr -> [(Sarq, [temp2; temp1])]
   end
 
+let load_data (ctxt:ctxt) (src:Ll.operand) (dst:X86.operand) (ty:ty) : ins list = 
+  let size_bytes = size_ty ctxt.tdecls ty in
+  let size_quads = size_bytes / 8 in
+  if size_quads > 1 then
+    failwith "Invalid type for loading"
+  else
+    begin match src with 
+    | Null | Const _ -> failwith "Invalid pointers Null / Const"
+    | Id _ | Gid _  -> [
+      compile_operand ctxt (Reg Rax) src; 
+      (Movq, [Ind2 Rax; Reg Rax]);
+      (Movq, [Reg Rax; dst])]
+  end
+
+let store_data (ctxt:ctxt) (src:Ll.operand) (dst:Ll.operand) (ty:ty) : ins list = 
+  [
+    compile_operand ctxt (Reg Rax) src; 
+    compile_operand ctxt (Reg Rcx) dst;
+    (Movq, [Reg Rax; Ind2 Rcx])
+  ]
+
+let load_data (ctxt:ctxt) (src:Ll.operand) (dst:X86.operand) (ty:ty) : ins list = 
+  let size_bytes = size_ty ctxt.tdecls ty in
+  let size_quads = size_bytes / 8 in
+  if size_quads > 1 then
+    failwith "Invalid type for loading"
+  else
+    begin match src with 
+    | Null | Const _ -> failwith "Invalid pointers Null / Const"
+    | Id _ | Gid _  -> [
+      compile_operand ctxt (Reg Rax) src; 
+      (Movq, [Ind2 Rax; Reg Rax]);
+      (Movq, [Reg Rax; dst])]
+  end
+
+let store_data (ctxt:ctxt) (src:Ll.operand) (dst:Ll.operand) (ty:ty) : ins list = 
+  [
+    compile_operand ctxt (Reg Rax) src; 
+    compile_operand ctxt (Reg Rcx) dst;
+    (Movq, [Reg Rax; Ind2 Rcx])
+  ]
+
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
   let dst = lookup ctxt.layout uid in
   let temp1 = Reg Rax in
@@ -253,9 +300,20 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
       op_1; 
       op_2; 
       (Movq, [Imm (Lit 0L); dst]);
-      (Cmpq, [Reg Rax; Reg Rcx]); 
+      (Cmpq, [Reg Rcx; Reg Rax]); 
       (Set (compile_cnd cnd), [dst]);
     ]
+    | Alloca ty -> [
+      (Subq, [Imm (Lit (size_ty ctxt.tdecls ty |> Int64.of_int)); Reg Rsp]);
+      (Movq, [Reg Rsp; lookup ctxt.layout uid])
+    ]
+  | Load (ty, op) -> 
+    begin match ty with
+    | Ptr t -> load_data ctxt op (lookup ctxt.layout uid) t
+    | _ -> failwith "Invalid type to load"
+    end
+  | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
+  | _ -> failwith "compile_insn not implemented"
   | _ -> failwith "compile_insn not fully implemented"
   end
 
