@@ -206,10 +206,31 @@ failwith "compile_gep not implemented"
 
    - Bitcast: does nothing interesting at the assembly level
 *)
+let get_op (op:Ll.operand) (layout:layout) =
+  match op with
+  | Null -> Imm (Lit 0L)
+  | Const n -> Imm (Lit n)
+  | Gid id ->
+    let mgld_lbl = Platform.mangle id in
+    lookup layout mgld_lbl
+  | Id id -> lookup layout id
+
+let compile_bop (ctxt:ctxt) (bop:bop) (op1:Ll.operand) (op2:Ll.operand) (temp: operand) (loc:X86.operand): X86.ins list = 
+  let compile_op1 = compile_operand ctxt temp in
+  begin match bop with
+    | Add -> [(compile_op1 op1)] @ [(Addq, [get_op op2 ctxt.layout; temp]); (Movq, [temp; loc])];
+    | Sub -> [(compile_op1 op1)] @ [(Subq, [get_op op2 ctxt.layout; temp]); (Movq, [temp; loc])];
+    | Mul -> [(compile_op1 op1)] @ [(Imulq, [get_op op2 ctxt.layout; temp]); (Movq, [temp; loc])];
+    | And -> [(compile_op1 op1)] @ [(Andq, [get_op op2 ctxt.layout; temp]); (Movq, [temp; loc])];
+    | _ -> []
+  end
+
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
+  let temp_reg = Reg Rax in
       begin match i with
-      | Binop _ -> []
+      | Binop  (bop, t, op1, op2)-> compile_bop ctxt bop op1 op2 temp_reg
       | _ -> failwith "compile_insn not implemented"
+      end
 
 
 
