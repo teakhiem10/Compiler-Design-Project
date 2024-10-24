@@ -232,14 +232,25 @@ let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
    [fn] - the name of the function containing this terminator
 *)
 let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
+  let store_operand = compile_operand ctxt (Reg Rax)
+  in
   match t with
   | Ret (ty, op) -> 
     let restore_stack = [(Movq, [Reg Rbp; Reg Rsp]); (Popq, [Reg Rbp]); (Retq, [])] in
     begin match op with
-    | Some operand -> failwith "compile_terminator Not implemented"
+    | Some operand -> store_operand operand :: restore_stack
     | None -> restore_stack
     end
-  | _ -> failwith "compile_terminator Not implemented"
+  | Br lbl -> [(Jmp, [Imm (Lbl (Platform.mangle (mk_lbl fn lbl)))])]
+  | Cbr (operand, lbl1, lbl2) -> 
+    let label1 = Platform.mangle (mk_lbl fn lbl1) in
+    let label2 = Platform.mangle (mk_lbl fn lbl2) in 
+    [
+      store_operand operand;
+      (Cmpq, [Imm (Lit 1L); Reg Rax]); (* Check if operand is equal to 1*)
+      (J Eq, [Imm (Lbl label1)]); 
+      (Jmp, [Imm (Lbl label2)])
+    ]
 
 
 (* compiling blocks --------------------------------------------------------- *)
