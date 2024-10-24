@@ -89,7 +89,16 @@ let lookup m x = List.assoc x m
    destination (usually a register).
 *)
 let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
-  function _ -> failwith "compile_operand unimplemented"
+  function op -> 
+    begin match op with
+    | Null -> (Movq, [(Imm (Lit 0L)); dest])
+    | Const x -> (Movq, [Imm (Lit x); dest]) 
+    | Gid glbl -> let gid = (Platform.mangle glbl) in 
+                    let o = Ind3 (Lbl gid, Rip) in
+                      (Leaq, [o; dest])
+    | Id x -> let operandLL_in_x86 = lookup ctxt.layout x in 
+                    (Movq, [operandLL_in_x86; dest])
+    end
 
 
 
@@ -339,7 +348,7 @@ let rec stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
    - the function entry code should allocate the stack storage needed
      to hold all of the local stack slots.
 *)
-let make_entry_instr (arg: uid list) (l:layout) (name:string): ins list =
+let make_entry_instr (arg: uid list) (l:layout): ins list =
   let rec helper (rest: uid list) (i:int) : ins list =
     begin match rest with
       | [] -> []
@@ -357,8 +366,8 @@ let make_entry_instr (arg: uid list) (l:layout) (name:string): ins list =
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
   let st_layout = stack_layout f_param f_cfg in
   let ctxt = {tdecls = tdecls; layout = st_layout} in
-  let entry = make_entry_instr f_param st_layout name in
-  let entry_block = Asm.text (Platform.mangle name) (entry @ compile_block name ctxt (fst f_cfg)) in
+  let entry = make_entry_instr f_param st_layout in
+  let entry_block = Asm.text name (entry @ compile_block name ctxt (fst f_cfg)) in
   let block_helper = fun (lbl, block) -> compile_lbl_block name lbl ctxt block in
   let other_blocks = List.map block_helper (snd f_cfg) in
   entry_block :: other_blocks
