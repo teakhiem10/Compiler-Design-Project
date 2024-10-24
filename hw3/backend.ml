@@ -303,18 +303,17 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Cmpq, [Reg Rcx; Reg Rax]); 
       (Set (compile_cnd cnd), [dst]);
     ]
-    | Alloca ty -> [
+  | Alloca ty -> [
       (Subq, [Imm (Lit (size_ty ctxt.tdecls ty |> Int64.of_int)); Reg Rsp]);
-      (Movq, [Reg Rsp; lookup ctxt.layout uid])
+      (Movq, [Reg Rsp; dst])
     ]
   | Load (ty, op) -> 
     begin match ty with
-    | Ptr t -> load_data ctxt op (lookup ctxt.layout uid) t
+    | Ptr t -> load_data ctxt op dst t
     | _ -> failwith "Invalid type to load"
     end
   | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
-  | _ -> failwith "compile_insn not implemented"
-  | _ -> failwith "compile_insn not fully implemented"
+  | _ -> failwith "compile_insn fully not implemented"
   end
 
 
