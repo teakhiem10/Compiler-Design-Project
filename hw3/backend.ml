@@ -206,7 +206,7 @@ failwith "compile_gep not implemented"
 
    - Bitcast: does nothing interesting at the assembly level
 *)
-let get_op (op:Ll.operand) (layout:layout) =
+let get_op (op:Ll.operand) (layout:layout)=
   match op with
   | Null -> Imm (Lit 0L)
   | Const n -> Imm (Lit n)
@@ -215,24 +215,32 @@ let get_op (op:Ll.operand) (layout:layout) =
     lookup layout mgld_lbl
   | Id id -> lookup layout id
 
-let compile_bop (ctxt:ctxt) (bop:bop) (op1:Ll.operand) (op2:Ll.operand) (temp: operand) (loc:X86.operand): X86.ins list = 
-  let compile_op1 = compile_operand ctxt temp in
+let compile_bop (bop:bop) (temp1: operand) (temp2:operand) (dst:X86.operand): X86.ins list = 
   begin match bop with
-    | Add -> [(compile_op1 op1)] @ [(Addq, [get_op op2 ctxt.layout; temp]); (Movq, [temp; loc])];
-    | Sub -> [(compile_op1 op1)] @ [(Subq, [get_op op2 ctxt.layout; temp]); (Movq, [temp; loc])];
-    | Mul -> [(compile_op1 op1)] @ [(Imulq, [get_op op2 ctxt.layout; temp]); (Movq, [temp; loc])];
-    | And -> [(compile_op1 op1)] @ [(Andq, [get_op op2 ctxt.layout; temp]); (Movq, [temp; loc])];
-    | _ -> []
+    | Add -> [(Addq, [temp2; temp1])]; 
+    | Sub -> [(Subq, [temp2; temp1])];
+    | Mul -> [(Imulq,[temp2; temp1])];
+    | And -> [(Andq, [temp2; temp1])];
+    | Xor -> [(Xorq, [temp2; temp1])];
+    | Or ->  [(Orq,  [temp2; temp1])];
+    | Shl -> [(Shlq, [temp2; temp1])]
+    | Lshr -> [(Shrq, [temp2; temp1])]
+    | Ashr -> [(Sarq, [temp2; temp1])]
   end
 
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
   let dst = lookup ctxt.layout uid in
-  let temp_reg = Reg Rax in
+  let temp1 = Reg Rax in
+  let temp2 = Reg Rcx in
+  let compile_op1 = compile_operand ctxt temp1 in
+  let compile_op2 = compile_operand ctxt temp2 in
   begin match i with
-  | Binop  (bop, t, op1, op2)-> compile_bop ctxt bop op1 op2 temp_reg dst
+  | Binop  (bop, t, op1, op2)->  [compile_op1 op1] @ [compile_op2 op2] @ 
+                                (compile_bop bop temp1 temp2 dst) @
+                                [(Movq, [temp1; dst])];
   | Icmp (cnd, ty, o1, o2) -> 
-    let op_1 = compile_operand ctxt (Reg Rax) o1 in
-    let op_2 = compile_operand ctxt (Reg Rcx) o2 in
+    let op_1 = compile_op1 o1 in
+    let op_2 = compile_op2 o2 in
     [
       op_1; 
       op_2; 
