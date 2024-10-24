@@ -226,11 +226,22 @@ let compile_bop (ctxt:ctxt) (bop:bop) (op1:Ll.operand) (op2:Ll.operand) (temp: o
   end
 
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
+  let dst = lookup ctxt.layout uid in
   let temp_reg = Reg Rax in
-      begin match i with
-      | Binop  (bop, t, op1, op2)-> compile_bop ctxt bop op1 op2 temp_reg
-      | _ -> failwith "compile_insn not implemented"
-      end
+  begin match i with
+  | Binop  (bop, t, op1, op2)-> compile_bop ctxt bop op1 op2 temp_reg dst
+  | Icmp (cnd, ty, o1, o2) -> 
+    let op_1 = compile_operand ctxt (Reg Rax) o1 in
+    let op_2 = compile_operand ctxt (Reg Rcx) o2 in
+    [
+      op_1; 
+      op_2; 
+      (Movq, [Imm (Lit 0L); dst]);
+      (Cmpq, [Reg Rax; Reg Rcx]); 
+      (Set (compile_cnd cnd), [dst]);
+    ]
+  | _ -> failwith "compile_insn not implemented"
+  end
 
 
 
