@@ -230,19 +230,13 @@ let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
    [fn] - the name of the function containing this terminator
 *)
 let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
-  let get_op_value = fun operand -> 
-    begin match operand with 
-    | Null -> Imm (Lit 0L)
-    | Const num -> Imm (Lit num)
-    | Id uid -> lookup ctxt.layout uid
-    | Gid gid -> Imm (Lbl (Platform.mangle gid)) (* TODO: Not quire sure here, if this is correct *)
-    end
+  let store_operand = compile_operand ctxt (Reg Rax)
   in
   match t with
   | Ret (ty, op) -> 
     let restore_stack = [(Movq, [Reg Rbp; Reg Rsp]); (Popq, [Reg Rbp]); (Retq, [])] in
     begin match op with
-    | Some operand -> (Movq, [get_op_value operand; Reg Rax]) :: restore_stack
+    | Some operand -> store_operand operand :: restore_stack
     | None -> restore_stack
     end
   | Br lbl -> [(Jmp, [Imm (Lbl (Platform.mangle (mk_lbl fn lbl)))])]
@@ -250,7 +244,8 @@ let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
     let label1 = Platform.mangle (mk_lbl fn lbl1) in
     let label2 = Platform.mangle (mk_lbl fn lbl2) in 
     [
-      (Cmpq, [Imm (Lit 1L); get_op_value operand]); (* Check if operand is equal to 1*)
+      store_operand operand;
+      (Cmpq, [Imm (Lit 1L); Reg Rax]); (* Check if operand is equal to 1*)
       (J Eq, [Imm (Lbl label1)]); 
       (Jmp, [Imm (Lbl label2)])
     ]
