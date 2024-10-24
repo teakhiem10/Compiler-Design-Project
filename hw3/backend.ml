@@ -221,7 +221,14 @@ let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
    [fn] - the name of the function containing this terminator
 *)
 let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
-  failwith "compile_terminator not implemented"
+  match t with
+  | Ret (ty, op) -> 
+    let restore_stack = [(Movq, [Reg Rbp; Reg Rsp]); (Popq, [Reg Rbp]); (Retq, [])] in
+    begin match op with
+    | Some operand -> failwith "compile_terminator Not implemented"
+    | None -> restore_stack
+    end
+  | _ -> failwith "compile_terminator Not implemented"
 
 
 (* compiling blocks --------------------------------------------------------- *)
@@ -232,7 +239,11 @@ let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
    [blk]  - LLVM IR code for the block
 *)
 let compile_block (fn:string) (ctxt:ctxt) (blk:Ll.block) : ins list =
-  failwith "compile_block not implemented"
+  let x86_insns = List.map (compile_insn ctxt) blk.insns 
+               |> List.flatten in
+  let x86_terminator = compile_terminator fn ctxt (snd blk.term) in
+  x86_insns @ x86_terminator
+  (*failwith "compile_block not implemented"*)
 
 let compile_lbl_block fn lbl ctxt blk : elem =
   Asm.text (mk_lbl fn lbl) (compile_block fn ctxt blk)
@@ -312,18 +323,29 @@ let rec stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
    - the function entry code should allocate the stack storage needed
      to hold all of the local stack slots.
 *)
-let make_entry_instr (arg: uid list) (l:layout) (name:string): elem =
+let make_entry_instr (arg: uid list) (l:layout) (name:string): ins list =
   let rec helper (rest: uid list) (i:int) : ins list =
     begin match rest with
       | [] -> []
       | x::xs -> (Movq, [arg_loc i; lookup l x]) :: helper xs (i+1) (*only arguments copy*)
     end
-  in Asm.text name (helper arg 0)
+  in 
+  let num_stack_bytes = Int64.mul 8L (Int64.of_int (List.length l)) in
+  let stack_allocation = [
+    (Pushq,  [Reg Rbp]); 
+    (Movq, [Reg Rsp; Reg Rbp]); 
+    (Subq, [Imm (Lit num_stack_bytes); Reg Rsp])
+    ] in
+  stack_allocation @ (helper arg 0)
 
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
-let st_layout = stack_layout f_param f_cfg in
-let entry = [make_entry_instr f_param st_layout name]
-in entry
+  let st_layout = stack_layout f_param f_cfg in
+  let ctxt = {tdecls = tdecls; layout = st_layout} in
+  let entry = make_entry_instr f_param st_layout name in
+  let entry_block = Asm.text name (entry @ compile_block name ctxt (fst f_cfg)) in
+  let block_helper = fun (lbl, block) -> compile_lbl_block name lbl ctxt block in
+  let other_blocks = List.map block_helper (snd f_cfg) in
+  entry_block :: other_blocks
 
 
 
