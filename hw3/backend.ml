@@ -207,7 +207,9 @@ failwith "compile_gep not implemented"
    - Bitcast: does nothing interesting at the assembly level
 *)
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
-      failwith "compile_insn not implemented"
+      begin match i with
+      | Binop _ -> []
+      | _ -> failwith "compile_insn not implemented"
 
 
 
