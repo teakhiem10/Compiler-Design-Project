@@ -221,14 +221,30 @@ let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
    [fn] - the name of the function containing this terminator
 *)
 let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
+  let get_op_value = fun operand -> 
+    begin match operand with 
+    | Null -> Imm (Lit 0L)
+    | Const num -> Imm (Lit num)
+    | Id uid -> lookup ctxt.layout uid
+    | Gid gid -> Imm (Lbl (Platform.mangle gid)) (* TODO: Not quire sure here, if this is correct *)
+    end
+  in
   match t with
   | Ret (ty, op) -> 
     let restore_stack = [(Movq, [Reg Rbp; Reg Rsp]); (Popq, [Reg Rbp]); (Retq, [])] in
     begin match op with
-    | Some operand -> failwith "compile_terminator Not implemented"
+    | Some operand -> (Movq, [get_op_value operand; Reg Rax]) :: restore_stack
     | None -> restore_stack
     end
-  | _ -> failwith "compile_terminator Not implemented"
+  | Br lbl -> [(Jmp, [Imm (Lbl (Platform.mangle (mk_lbl fn lbl)))])]
+  | Cbr (operand, lbl1, lbl2) -> 
+    let label1 = Platform.mangle (mk_lbl fn lbl1) in
+    let label2 = Platform.mangle (mk_lbl fn lbl2) in 
+    [
+      (Cmpq, [Imm (Lit 1L); get_op_value operand]); (* Check if operand is equal to 1*)
+      (J Eq, [Imm (Lbl label1)]); 
+      (Jmp, [Imm (Lbl label2)])
+    ]
 
 
 (* compiling blocks --------------------------------------------------------- *)
@@ -342,7 +358,7 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg
   let st_layout = stack_layout f_param f_cfg in
   let ctxt = {tdecls = tdecls; layout = st_layout} in
   let entry = make_entry_instr f_param st_layout name in
-  let entry_block = Asm.text name (entry @ compile_block name ctxt (fst f_cfg)) in
+  let entry_block = Asm.text (Platform.mangle name) (entry @ compile_block name ctxt (fst f_cfg)) in
   let block_helper = fun (lbl, block) -> compile_lbl_block name lbl ctxt block in
   let other_blocks = List.map block_helper (snd f_cfg) in
   entry_block :: other_blocks
