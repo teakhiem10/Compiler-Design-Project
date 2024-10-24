@@ -215,7 +215,7 @@ let get_op (op:Ll.operand) (layout:layout)=
     lookup layout mgld_lbl
   | Id id -> lookup layout id
 
-let compile_bop (bop:bop) (temp1: operand) (temp2:operand) (dst:X86.operand): X86.ins list = 
+let compile_bop (bop:bop) (temp1: operand) (temp2:operand): X86.ins list = 
   begin match bop with
     | Add -> [(Addq, [temp2; temp1])]; 
     | Sub -> [(Subq, [temp2; temp1])];
@@ -235,10 +235,10 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
   let compile_op1 = compile_operand ctxt temp1 in
   let compile_op2 = compile_operand ctxt temp2 in
   begin match i with
-  | Binop  (bop, t, op1, op2)->  [compile_op1 op1] @ [compile_op2 op2] @ 
-                                (compile_bop bop temp1 temp2 dst) @
+  | Binop  (bop, _, op1, op2)->  [compile_op1 op1] @ [compile_op2 op2] @ 
+                                (compile_bop bop temp1 temp2) @
                                 [(Movq, [temp1; dst])];
-  | Icmp (cnd, ty, o1, o2) -> 
+  | Icmp (cnd, _, o1, o2) -> 
     let op_1 = compile_op1 o1 in
     let op_2 = compile_op2 o2 in
     [
@@ -248,7 +248,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Cmpq, [Reg Rax; Reg Rcx]); 
       (Set (compile_cnd cnd), [dst]);
     ]
-  | _ -> failwith "compile_insn not implemented"
+  | _ -> failwith "compile_insn not fully implemented"
   end
 
 
