@@ -148,7 +148,15 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
      Your function should simply return 0 in those cases
 *)
 let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
-failwith "size_ty not implemented"
+  match t with
+  | I1 | I64 | Ptr _  -> 8
+  | Array (n, ty) -> n * (size_ty tdecls ty)
+  | Namedt tid -> size_ty tdecls (lookup tdecls tid)
+  | Struct types -> 
+                    List.map (size_ty tdecls) types |> 
+                    List.fold_left (+) 0 
+  | _ -> failwith "Invalid type"
+
 
 
 
