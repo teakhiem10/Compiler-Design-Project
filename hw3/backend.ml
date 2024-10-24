@@ -385,7 +385,7 @@ let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg
   let st_layout = stack_layout f_param f_cfg in
   let ctxt = {tdecls = tdecls; layout = st_layout} in
   let entry = make_entry_instr f_param st_layout in
-  let entry_block = Asm.text name (entry @ compile_block name ctxt (fst f_cfg)) in
+  let entry_block = Asm.gtext name (entry @ compile_block name ctxt (fst f_cfg)) in
   let block_helper = fun (lbl, block) -> compile_lbl_block name lbl ctxt block in
   let other_blocks = List.map block_helper (snd f_cfg) in
   entry_block :: other_blocks
