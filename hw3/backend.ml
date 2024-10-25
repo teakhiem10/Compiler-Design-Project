@@ -13,6 +13,11 @@ open X86
 
 (* helpers ------------------------------------------------------------------ *)
 
+(* Helper registers to use to store temporary results*)
+
+let temp1 = Reg Rax
+let temp2 = Reg Rcx
+
 (* Map LL comparison operations to X86 condition codes *)
 let compile_cnd = function
   | Ll.Eq  -> X86.Eq
@@ -230,7 +235,7 @@ let get_op (op:Ll.operand) (layout:layout)=
     lookup layout mgld_lbl
   | Id id -> lookup layout id
 
-let compile_bop (bop:bop) (temp1: operand) (temp2:operand): X86.ins list = 
+let compile_bop (bop:bop) : X86.ins list = 
   begin match bop with
     | Add -> [(Addq, [temp2; temp1])]; 
     | Sub -> [(Subq, [temp2; temp1])];
@@ -286,8 +291,6 @@ let store_data (ctxt:ctxt) (src:Ll.operand) (dst:Ll.operand) (ty:ty) : ins list 
   ]
 
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
-  let temp1 = Reg Rax in
-  let temp2 = Reg Rcx in
   let compile_op1 = compile_operand ctxt temp1 in
   let compile_op2 = compile_operand ctxt temp2 in
   begin match i with 
@@ -295,7 +298,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
       let dst = lookup ctxt.layout uid in
       begin match i with
         | Binop  (bop, _, op1, op2)->  [compile_op1 op1] @ [compile_op2 op2] @ 
-                                       (compile_bop bop temp1 temp2) @
+                                       (compile_bop bop) @
                                        [(Movq, [temp1; dst])];
         | Icmp (cnd, _, o1, o2) -> 
           let op_1 = compile_op1 o1 in
