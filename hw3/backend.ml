@@ -361,11 +361,12 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
             | Ptr t -> load_data ctxt op dst t
             | _ -> failwith "Invalid type to load"
           end
-        | _ -> failwith "compile_insn not fully implemented"
+        | Gep _ -> failwith "Gep not implemented"
+        | _ -> failwith "Thou shall not be here"
       end
     | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
     | Call (ty, fn, ops) -> compile_call ctxt uid ty fn ops
-    | _ -> failwith "compile_insn fully not implemented"
+    | Bitcast (_, op, _) -> [compile_operand ctxt temp1 op; (Movq, [Reg Rax; lookup ctxt.layout uid])]
   end
 
 
