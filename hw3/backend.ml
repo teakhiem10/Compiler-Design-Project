@@ -154,7 +154,29 @@ let arg_loc (n : int) : operand =
    needed). ]
 *)
 
-
+let compile_call (ctxt:ctxt) (uid:uid) (t:ty) (fn:Ll.operand) (ops: (ty * Ll.operand) list) : ins list = 
+  let label = 
+    match fn with
+    | Null | Const _ -> failwith "Invalid function operand"
+    | Gid id | Id id ->  Platform.mangle id
+  in
+  let num_args = List.length ops in
+  let helper = fun i -> fun  (_, op)  -> 
+    if i < 6 then [
+      compile_operand ctxt temp1 op;
+      (Movq, [temp1; arg_loc i])
+    ] else [
+      compile_operand ctxt temp1 op;
+      (Pushq, [temp1])
+    ] in
+  let store_arguments = List.mapi helper ops |> List.flatten in
+  let assignment = 
+    match t with
+    | Void -> [] 
+    | _ -> [(Movq, [Reg Rax; lookup ctxt.layout uid])]
+  in
+  let cleanup = if num_args < 6 then [] else [(Addq, [Imm (Lit (Int64.of_int ( 8 * (num_args - 6)))); Reg Rsp])] in
+  store_arguments @ [(Callq, [Imm (Lbl label)])] @ assignment @ cleanup
 
 
 (* compiling getelementptr (gep)  ------------------------------------------- *)
@@ -342,6 +364,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
         | _ -> failwith "compile_insn not fully implemented"
       end
     | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
+    | Call (ty, fn, ops) -> compile_call ctxt uid ty fn ops
     | _ -> failwith "compile_insn fully not implemented"
   end
 
