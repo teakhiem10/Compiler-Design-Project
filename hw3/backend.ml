@@ -316,10 +316,12 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
             | Ptr t -> load_data ctxt op dst t
             | _ -> failwith "Invalid type to load"
           end
+          | Gep (t1, op, ops) -> []
         | _ -> failwith "compile_insn not fully implemented"
       end
     | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
-    | _ -> failwith "compile_insn fully not implemented"
+    | Bitcast (t1, op, t2) -> []
+    | _ -> failwith "compile_insn not fully implemented"
   end
 
 
