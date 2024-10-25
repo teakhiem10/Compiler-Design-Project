@@ -96,13 +96,13 @@ let lookup m x = List.assoc x m
 let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
   function op -> 
     begin match op with
-    | Null -> (Movq, [(Imm (Lit 0L)); dest])
-    | Const x -> (Movq, [Imm (Lit x); dest]) 
-    | Gid glbl -> let gid = (Platform.mangle glbl) in 
-                    let o = Ind3 (Lbl gid, Rip) in
-                      (Leaq, [o; dest])
-    | Id x -> let operandLL_in_x86 = lookup ctxt.layout x in 
-                    (Movq, [operandLL_in_x86; dest])
+      | Null -> (Movq, [(Imm (Lit 0L)); dest])
+      | Const x -> (Movq, [Imm (Lit x); dest]) 
+      | Gid glbl -> let gid = (Platform.mangle glbl) in 
+        let o = Ind3 (Lbl gid, Rip) in
+        (Leaq, [o; dest])
+      | Id x -> let operandLL_in_x86 = lookup ctxt.layout x in 
+        (Movq, [operandLL_in_x86; dest])
     end
 
 
@@ -158,8 +158,8 @@ let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
   | Array (n, ty) -> n * (size_ty tdecls ty)
   | Namedt tid -> size_ty tdecls (lookup tdecls tid)
   | Struct types -> 
-                    List.map (size_ty tdecls) types |> 
-                    List.fold_left (+) 0 
+    List.map (size_ty tdecls) types |> 
+    List.fold_left (+) 0 
   | _ -> failwith "Invalid type"
 
 
@@ -177,22 +177,22 @@ let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
 
    4. subsequent indices are interpreted according to the type t:
 
-     - if t is a struct, the index must be a constant n and it
+   - if t is a struct, the index must be a constant n and it
        picks out the n'th element of the struct. [ NOTE: the offset
        within the struct of the n'th element is determined by the
        sizes of the types of the previous elements ]
 
-     - if t is an array, the index can be any operand, and its
+   - if t is an array, the index can be any operand, and its
        value determines the offset within the array.
 
-     - if t is any other type, the path is invalid
+   - if t is any other type, the path is invalid
 
    5. if the index is valid, the remainder of the path is computed as
       in (4), but relative to the type f the sub-element picked out
       by the path so far
 *)
 let compile_gep (ctxt:ctxt) (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
-failwith "compile_gep not implemented"
+  failwith "compile_gep not implemented"
 
 
 
@@ -248,12 +248,12 @@ let load_data (ctxt:ctxt) (src:Ll.operand) (dst:X86.operand) (ty:ty) : ins list 
     failwith "Invalid type for loading"
   else
     begin match src with 
-    | Null | Const _ -> failwith "Invalid pointers Null / Const"
-    | Id _ | Gid _  -> [
-      compile_operand ctxt (Reg Rax) src; 
-      (Movq, [Ind2 Rax; Reg Rax]);
-      (Movq, [Reg Rax; dst])]
-  end
+      | Null | Const _ -> failwith "Invalid pointers Null / Const"
+      | Id _ | Gid _  -> [
+          compile_operand ctxt (Reg Rax) src; 
+          (Movq, [Ind2 Rax; Reg Rax]);
+          (Movq, [Reg Rax; dst])]
+    end
 
 let store_data (ctxt:ctxt) (src:Ll.operand) (dst:Ll.operand) (ty:ty) : ins list = 
   [
@@ -269,12 +269,12 @@ let load_data (ctxt:ctxt) (src:Ll.operand) (dst:X86.operand) (ty:ty) : ins list 
     failwith "Invalid type for loading"
   else
     begin match src with 
-    | Null | Const _ -> failwith "Invalid pointers Null / Const"
-    | Id _ | Gid _  -> [
-      compile_operand ctxt (Reg Rax) src; 
-      (Movq, [Ind2 Rax; Reg Rax]);
-      (Movq, [Reg Rax; dst])]
-  end
+      | Null | Const _ -> failwith "Invalid pointers Null / Const"
+      | Id _ | Gid _  -> [
+          compile_operand ctxt (Reg Rax) src; 
+          (Movq, [Ind2 Rax; Reg Rax]);
+          (Movq, [Reg Rax; dst])]
+    end
 
 let store_data (ctxt:ctxt) (src:Ll.operand) (dst:Ll.operand) (ty:ty) : ins list = 
   [
@@ -289,33 +289,33 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
   let compile_op1 = compile_operand ctxt temp1 in
   let compile_op2 = compile_operand ctxt temp2 in
   begin match i with 
-  | Binop _ | Icmp _ | Alloca _ | Load _ | Gep _ ->
-    let dst = lookup ctxt.layout uid in
-    begin match i with
-    | Binop  (bop, _, op1, op2)->  [compile_op1 op1] @ [compile_op2 op2] @ 
-                                  (compile_bop bop temp1 temp2) @
-                                  [(Movq, [temp1; dst])];
-    | Icmp (cnd, _, o1, o2) -> 
-      let op_1 = compile_op1 o1 in
-      let op_2 = compile_op2 o2 in
-      [
-        op_1; 
-        op_2; 
-        (Movq, [Imm (Lit 0L); dst]);
-        (Cmpq, [Reg Rcx; Reg Rax]); 
-        (Set (compile_cnd cnd), [dst]);
-      ]
-    | Alloca ty -> [
-        (Subq, [Imm (Lit (size_ty ctxt.tdecls ty |> Int64.of_int)); Reg Rsp]);
-        (Movq, [Reg Rsp; dst])
-      ]
-    | Load (ty, op) -> 
-      begin match ty with
-      | Ptr t -> load_data ctxt op dst t
-      | _ -> failwith "Invalid type to load"
+    | Binop _ | Icmp _ | Alloca _ | Load _ | Gep _ ->
+      let dst = lookup ctxt.layout uid in
+      begin match i with
+        | Binop  (bop, _, op1, op2)->  [compile_op1 op1] @ [compile_op2 op2] @ 
+                                       (compile_bop bop temp1 temp2) @
+                                       [(Movq, [temp1; dst])];
+        | Icmp (cnd, _, o1, o2) -> 
+          let op_1 = compile_op1 o1 in
+          let op_2 = compile_op2 o2 in
+          [
+            op_1; 
+            op_2; 
+            (Movq, [Imm (Lit 0L); dst]);
+            (Cmpq, [Reg Rcx; Reg Rax]); 
+            (Set (compile_cnd cnd), [dst]);
+          ]
+        | Alloca ty -> [
+            (Subq, [Imm (Lit (size_ty ctxt.tdecls ty |> Int64.of_int)); Reg Rsp]);
+            (Movq, [Reg Rsp; dst])
+          ]
+        | Load (ty, op) -> 
+          begin match ty with
+            | Ptr t -> load_data ctxt op dst t
+            | _ -> failwith "Invalid type to load"
+          end
+        | _ -> failwith "compile_insn not fully implemented"
       end
-    | _ -> failwith "compile_insn not fully implemented"
-    end
     | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
     | _ -> failwith "compile_insn fully not implemented"
   end
@@ -347,8 +347,8 @@ let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
   | Ret (ty, op) -> 
     let restore_stack = [(Movq, [Reg Rbp; Reg Rsp]); (Popq, [Reg Rbp]); (Retq, [])] in
     begin match op with
-    | Some operand -> store_operand operand :: restore_stack
-    | None -> restore_stack
+      | Some operand -> store_operand operand :: restore_stack
+      | None -> restore_stack
     end
   | Br lbl -> [(Jmp, [Imm (Lbl (Platform.mangle (mk_lbl fn lbl)))])]
   | Cbr (operand, lbl1, lbl2) -> 
@@ -371,10 +371,9 @@ let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
 *)
 let compile_block (fn:string) (ctxt:ctxt) (blk:Ll.block) : ins list =
   let x86_insns = List.map (compile_insn ctxt) blk.insns 
-               |> List.flatten in
+                  |> List.flatten in
   let x86_terminator = compile_terminator fn ctxt (snd blk.term) in
   x86_insns @ x86_terminator
-  (*failwith "compile_block not implemented"*)
 
 let compile_lbl_block fn lbl ctxt blk : elem =
   Asm.text (mk_lbl fn lbl) (compile_block fn ctxt blk)
@@ -394,14 +393,15 @@ let compile_lbl_block fn lbl ctxt blk : elem =
 
 let arg_loc (n : int) : operand =
   begin match n with
-  | 0 -> Reg Rdi
-  | 1 -> Reg Rsi
-  | 2 -> Reg Rdx
-  | 3 -> Reg Rcx
-  | 4 -> Reg R08
-  | 5 -> Reg R09
-  | _ -> let offset = Int64.mul (Int64.sub (Int64.of_int n) 4L) 8L in 
-              Ind3 (Lit offset, Rbp)
+    | 0 -> Reg Rdi
+    | 1 -> Reg Rsi
+    | 2 -> Reg Rdx
+    | 3 -> Reg Rcx
+    | 4 -> Reg R08
+    | 5 -> Reg R09
+    | _ -> 
+      let offset = Int64.mul (Int64.sub (Int64.of_int n) 4L) 8L in 
+      Ind3 (Lit offset, Rbp)
   end
 
 
@@ -416,9 +416,9 @@ let arg_loc (n : int) : operand =
 *)
 let right_instr (i:insn) : bool = 
   begin match i with
-  | Binop _| Alloca _ | Load _ | Icmp _
-  | Call _ | Bitcast _ | Gep _ -> true
-  | _ -> false
+    | Binop _| Alloca _ | Load _ | Icmp _
+    | Call _ | Bitcast _ | Gep _ -> true
+    | _ -> false
   end
 
 
@@ -426,15 +426,15 @@ let rec stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
   let rec helper (args : uid list) ((block, lbled_blocks):cfg) (n:int64) : layout =
     let curr_stack =  Ind3(Lit (Int64.mul n (-8L)), Rbp) in
     begin match args, block, lbled_blocks with
-    | [], {insns = []; _},[] -> []
-    | [], {insns = []; _ }, (_, next)::xs -> helper [] (next,xs) n
-    | [], {insns = ((id,instr)::xs); term }, _ -> let new_block : block = {insns = xs; term = term} in 
-                                            if right_instr instr then
-                                              (id, curr_stack) :: (helper args (new_block, lbled_blocks) (Int64.add n 1L))
-                                            else
-                                              helper args (new_block, lbled_blocks) (Int64.add n 1L)
+      | [], {insns = []; _},[] -> []
+      | [], {insns = []; _ }, (_, next)::xs -> helper [] (next,xs) n
+      | [], {insns = ((id,instr)::xs); term }, _ -> let new_block : block = {insns = xs; term = term} in 
+        if right_instr instr then
+          (id, curr_stack) :: (helper args (new_block, lbled_blocks) (Int64.add n 1L))
+        else
+          helper args (new_block, lbled_blocks) (Int64.add n 1L)
 
-    | (arg :: x),_,_ -> (arg, curr_stack) :: (helper x (block, lbled_blocks) (Int64.add n 1L))
+      | (arg :: x),_,_ -> (arg, curr_stack) :: (helper x (block, lbled_blocks) (Int64.add n 1L))
     end
   in helper args (block, lbled_blocks) 1L
 
@@ -466,7 +466,7 @@ let make_entry_instr (arg: uid list) (l:layout): ins list =
     (Pushq,  [Reg Rbp]); 
     (Movq, [Reg Rsp; Reg Rbp]); 
     (Subq, [Imm (Lit num_stack_bytes); Reg Rsp])
-    ] in
+  ] in
   stack_allocation @ (helper arg 0)
 
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
