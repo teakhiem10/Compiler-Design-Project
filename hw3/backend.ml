@@ -112,6 +112,26 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
         (Movq, [operandLL_in_x86; dest])
     end
 
+(* This helper function computes the location of the nth incoming
+   function argument: either in a register or relative to %rbp,
+   according to the calling conventions.  You might find it useful for
+   compile_fdecl.
+
+   [ NOTE: the first six arguments are numbered 0 .. 5 ]
+*)
+
+let arg_loc (n : int) : operand =
+  begin match n with
+    | 0 -> Reg Rdi
+    | 1 -> Reg Rsi
+    | 2 -> Reg Rdx
+    | 3 -> Reg Rcx
+    | 4 -> Reg R08
+    | 5 -> Reg R09
+    | _ -> 
+      let offset = Int64.mul (Int64.sub (Int64.of_int n) 4L) 8L in 
+      Ind3 (Lit offset, Rbp)
+  end
 
 
 (* compiling call  ---------------------------------------------------------- *)
@@ -386,28 +406,6 @@ let compile_lbl_block fn lbl ctxt blk : elem =
 
 
 (* compile_fdecl ------------------------------------------------------------ *)
-
-
-(* This helper function computes the location of the nth incoming
-   function argument: either in a register or relative to %rbp,
-   according to the calling conventions.  You might find it useful for
-   compile_fdecl.
-
-   [ NOTE: the first six arguments are numbered 0 .. 5 ]
-*)
-
-let arg_loc (n : int) : operand =
-  begin match n with
-    | 0 -> Reg Rdi
-    | 1 -> Reg Rsi
-    | 2 -> Reg Rdx
-    | 3 -> Reg Rcx
-    | 4 -> Reg R08
-    | 5 -> Reg R09
-    | _ -> 
-      let offset = Int64.mul (Int64.sub (Int64.of_int n) 4L) 8L in 
-      Ind3 (Lit offset, Rbp)
-  end
 
 
 (* We suggest that you create a helper function that computes the
