@@ -284,36 +284,40 @@ let store_data (ctxt:ctxt) (src:Ll.operand) (dst:Ll.operand) (ty:ty) : ins list 
   ]
 
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
-  let dst = lookup ctxt.layout uid in
   let temp1 = Reg Rax in
   let temp2 = Reg Rcx in
   let compile_op1 = compile_operand ctxt temp1 in
   let compile_op2 = compile_operand ctxt temp2 in
-  begin match i with
-  | Binop  (bop, _, op1, op2)->  [compile_op1 op1] @ [compile_op2 op2] @ 
-                                (compile_bop bop temp1 temp2) @
-                                [(Movq, [temp1; dst])];
-  | Icmp (cnd, _, o1, o2) -> 
-    let op_1 = compile_op1 o1 in
-    let op_2 = compile_op2 o2 in
-    [
-      op_1; 
-      op_2; 
-      (Movq, [Imm (Lit 0L); dst]);
-      (Cmpq, [Reg Rcx; Reg Rax]); 
-      (Set (compile_cnd cnd), [dst]);
-    ]
-  | Alloca ty -> [
-      (Subq, [Imm (Lit (size_ty ctxt.tdecls ty |> Int64.of_int)); Reg Rsp]);
-      (Movq, [Reg Rsp; dst])
-    ]
-  | Load (ty, op) -> 
-    begin match ty with
-    | Ptr t -> load_data ctxt op dst t
-    | _ -> failwith "Invalid type to load"
+  begin match i with 
+  | Binop _ | Icmp _ | Alloca _ | Load _ | Gep _ ->
+    let dst = lookup ctxt.layout uid in
+    begin match i with
+    | Binop  (bop, _, op1, op2)->  [compile_op1 op1] @ [compile_op2 op2] @ 
+                                  (compile_bop bop temp1 temp2) @
+                                  [(Movq, [temp1; dst])];
+    | Icmp (cnd, _, o1, o2) -> 
+      let op_1 = compile_op1 o1 in
+      let op_2 = compile_op2 o2 in
+      [
+        op_1; 
+        op_2; 
+        (Movq, [Imm (Lit 0L); dst]);
+        (Cmpq, [Reg Rcx; Reg Rax]); 
+        (Set (compile_cnd cnd), [dst]);
+      ]
+    | Alloca ty -> [
+        (Subq, [Imm (Lit (size_ty ctxt.tdecls ty |> Int64.of_int)); Reg Rsp]);
+        (Movq, [Reg Rsp; dst])
+      ]
+    | Load (ty, op) -> 
+      begin match ty with
+      | Ptr t -> load_data ctxt op dst t
+      | _ -> failwith "Invalid type to load"
+      end
+    | _ -> failwith "compile_insn not fully implemented"
     end
-  | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
-  | _ -> failwith "compile_insn fully not implemented"
+    | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
+    | _ -> failwith "compile_insn fully not implemented"
   end
 
 
