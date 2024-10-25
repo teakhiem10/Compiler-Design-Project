@@ -166,16 +166,27 @@ let compile_call (ctxt:ctxt) (uid:uid) (t:ty) (fn:Ll.operand) (ops: (ty * Ll.ope
     | Null | Const _ -> failwith "Invalid function operand"
     | Gid id | Id id ->  Platform.mangle id
   in
-  let num_args = List.length ops in
   let register_args = sublist ops 0 6 in
   let memory_args = sublist ops 6 (-1) in
-  let stack_bytes = Imm (Lit (Int64.of_int ( 8 * (num_args - 6)))) in
   let store_register_arg = fun i -> fun  (_, op)  -> 
     if i < 6 then [
       compile_operand ctxt temp1 op;
       (Movq, [temp1; arg_loc i])
     ] else failwith "Too many register arguments" in
   let store_memory_arg = fun (_, op) -> [compile_operand ctxt temp1 op; (Pushq, [temp1])] in
+
+  let stack_alignment_init = [
+    (Movq, [Reg Rsp; Reg Rbx]); (* Store stack pointer in rbx before aligning (rbx is callee saved )*)
+    (Movq, [Reg Rsp; temp1]);
+    (Shrq, [Imm(Lit 4L); temp1]); (* First align to 16 bytes by discarding bottom 4 bits*)
+    (Shlq, [Imm(Lit 4L); temp1])
+  ] @ begin
+    if ((List.length memory_args) mod 2) = 0 then []
+       else [(Subq, [Imm (Lit 8L); temp1])] (* If uneven number of memory operands, subtract 8 from rsp to make it 16 byte aligned after args are pushed*)
+      end 
+      @ [(Movq, [temp1; Reg Rsp])]
+    in
+
   let store_arguments = 
     (register_args |> List.mapi store_register_arg) @
     (memory_args |> List.rev |> List.map store_memory_arg) |> List.flatten in
@@ -184,7 +195,8 @@ let compile_call (ctxt:ctxt) (uid:uid) (t:ty) (fn:Ll.operand) (ops: (ty * Ll.ope
     | Void -> [] 
     | _ -> [(Movq, [Reg Rax; lookup ctxt.layout uid])]
   in
-  let cleanup = if num_args < 6 then [] else [(Addq, [stack_bytes; Reg Rsp])] in
+  let cleanup = [(Movq, [Reg Rbx; Reg Rsp])] in
+  stack_alignment_init @ 
   store_arguments @ 
   [(Callq, [Imm (Lbl label)])] @ 
   assignment @ 
