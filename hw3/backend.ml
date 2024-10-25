@@ -56,6 +56,8 @@ let string_of_ll_operand (op:Ll.operand) : string =
 
 type layout = (uid * X86.operand) list
 
+let string_of_layout (l:layout) : string = 
+  Printf.sprintf "Layout: %s" (String.concat ", " (List.map (fun a -> fst a ^ ": " ^ (string_of_operand (snd a))) l))
 (* A context contains the global type declarations (needed for getelementptr
    calculations) and a stack layout. *)
 type ctxt = { tdecls : (tid * ty) list
@@ -432,7 +434,7 @@ let rec stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
         if right_instr instr then
           (id, curr_stack) :: (helper args (new_block, lbled_blocks) (Int64.add n 1L))
         else
-          helper args (new_block, lbled_blocks) (Int64.add n 1L)
+          helper args (new_block, lbled_blocks) n
 
       | (arg :: x),_,_ -> (arg, curr_stack) :: (helper x (block, lbled_blocks) (Int64.add n 1L))
     end
@@ -471,6 +473,7 @@ let make_entry_instr (arg: uid list) (l:layout): ins list =
 
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
   let st_layout = stack_layout f_param f_cfg in
+  print_endline @@ string_of_layout st_layout;
   let ctxt = {tdecls = tdecls; layout = st_layout} in
   let entry = make_entry_instr f_param st_layout in
   let entry_block = Asm.gtext name (entry @ compile_block name ctxt (fst f_cfg)) in
