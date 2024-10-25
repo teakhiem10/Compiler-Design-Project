@@ -461,7 +461,10 @@ let make_entry_instr (arg: uid list) (l:layout): ins list =
   let rec helper (rest: uid list) (i:int) : ins list =
     begin match rest with
       | [] -> []
-      | x::xs -> (Movq, [arg_loc i; lookup l x]) :: helper xs (i+1) (*only arguments copy*)
+      | x::xs -> [
+        (Movq, [arg_loc i; temp1]); (* Moving argument to register first, as it could be a memory location *)
+        (Movq, [temp1; lookup l x])
+       ] @ helper xs (i+1) (*only arguments copy*)
     end
   in 
   let num_stack_bytes = Int64.mul 8L (Int64.of_int (List.length l)) in
