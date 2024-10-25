@@ -133,7 +133,6 @@ let arg_loc (n : int) : operand =
       Ind3 (Lit offset, Rbp)
   end
 
-
 (* compiling call  ---------------------------------------------------------- *)
 
 (* You will probably find it helpful to implement a helper function that
@@ -154,6 +153,13 @@ let arg_loc (n : int) : operand =
    needed). ]
 *)
 
+let rec sublist (list :'a list) (l:int) (r:int) : 'a list = 
+  match list, l, r with
+  | [], _, _ -> []
+  | _, 0, 0 -> []
+  | (x::xs), 0, n -> x :: sublist xs 0 (n-1)
+  | (_::xs), n, m -> sublist xs (n-1) (m-1)
+
 let compile_call (ctxt:ctxt) (uid:uid) (t:ty) (fn:Ll.operand) (ops: (ty * Ll.operand) list) : ins list = 
   let label = 
     match fn with
@@ -161,22 +167,28 @@ let compile_call (ctxt:ctxt) (uid:uid) (t:ty) (fn:Ll.operand) (ops: (ty * Ll.ope
     | Gid id | Id id ->  Platform.mangle id
   in
   let num_args = List.length ops in
-  let helper = fun i -> fun  (_, op)  -> 
+  let register_args = sublist ops 0 6 in
+  let memory_args = sublist ops 6 (-1) in
+  let stack_bytes = Imm (Lit (Int64.of_int ( 8 * (num_args - 6)))) in
+  let store_register_arg = fun i -> fun  (_, op)  -> 
     if i < 6 then [
       compile_operand ctxt temp1 op;
       (Movq, [temp1; arg_loc i])
-    ] else [
-      compile_operand ctxt temp1 op;
-      (Pushq, [temp1])
-    ] in
-  let store_arguments = List.mapi helper ops |> List.flatten in
+    ] else failwith "Too many register arguments" in
+  let store_memory_arg = fun (_, op) -> [compile_operand ctxt temp1 op; (Pushq, [temp1])] in
+  let store_arguments = 
+    (register_args |> List.mapi store_register_arg) @
+    (memory_args |> List.rev |> List.map store_memory_arg) |> List.flatten in
   let assignment = 
     match t with
     | Void -> [] 
     | _ -> [(Movq, [Reg Rax; lookup ctxt.layout uid])]
   in
-  let cleanup = if num_args < 6 then [] else [(Addq, [Imm (Lit (Int64.of_int ( 8 * (num_args - 6)))); Reg Rsp])] in
-  store_arguments @ [(Callq, [Imm (Lbl label)])] @ assignment @ cleanup
+  let cleanup = if num_args < 6 then [] else [(Addq, [stack_bytes; Reg Rsp])] in
+  store_arguments @ 
+  [(Callq, [Imm (Lbl label)])] @ 
+  assignment @ 
+  cleanup
 
 
 (* compiling getelementptr (gep)  ------------------------------------------- *)
@@ -503,7 +515,6 @@ let make_entry_instr (arg: uid list) (l:layout): ins list =
 
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
   let st_layout = stack_layout f_param f_cfg in
-  print_endline @@ string_of_layout st_layout;
   let ctxt = {tdecls = tdecls; layout = st_layout} in
   let entry = make_entry_instr f_param st_layout in
   let entry_block = Asm.gtext name (entry @ compile_block name ctxt (fst f_cfg)) in
