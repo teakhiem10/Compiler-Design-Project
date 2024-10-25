@@ -444,7 +444,9 @@ let compile_lbl_block fn lbl ctxt blk : elem =
 let right_instr (i:insn) : bool = 
   begin match i with
     | Binop _| Alloca _ | Load _ | Icmp _
-    | Call _ | Bitcast _ | Gep _ -> true
+    | Bitcast _ | Gep _ -> true
+    | Call (Void, _, _) -> false
+    | Call _ -> true
     | _ -> false
   end
 
