@@ -182,7 +182,8 @@ let compile_call (ctxt:ctxt) (uid:uid) (t:ty) (fn:Ll.operand) (ops: (ty * Ll.ope
     (Shlq, [Imm(Lit 4L); temp1])
   ] @ begin
     if ((List.length memory_args) mod 2) = 0 then []
-       else [(Subq, [Imm (Lit 8L); temp1])] (* If uneven number of memory operands, subtract 8 from rsp to make it 16 byte aligned after args are pushed*)
+       else [(Subq, [Imm (Lit 8L); temp1])] (* If uneven number of memory operands, 
+                                    subtract 8 from rsp to make it 16 byte aligned after args are pushed*)
       end 
       @ [(Movq, [temp1; Reg Rsp])]
     in
@@ -274,22 +275,39 @@ match rest with
               0L
 in
 helper t 0L
+let helper_gep (ctxt:ctxt) (curr:ty) (path:Ll.operand list) : ins list =
+  let compile_temp2 = compile_operand ctxt temp2 in
+  let rec helper (curr_type:ty) (curr_path:Ll.operand list) : ins list =
+    begin match curr_type, curr_path with
+      | _, [] -> []
+
+      | Struct st, (Const i)::xs -> let offset = count_offset_struct ctxt st i in (*calculate offset until 
+                                                                                  right part of struct*)
+                              let compile_offset = compile_temp2 (Const offset) in (*offset saved in %Rcx*)
+                              [compile_offset ; (Addq, [temp2; temp1])] @ (*Calc current offset from Base Address*)
+                                            helper (List.nth st (Int64.to_int i)) xs
+      | Struct _, _ -> failwith "not Const for Struct"
+      | Array (_,t), x::xs -> let compile_arr_op = compile_temp2 x in (*move index to %Rcx*)
+                              let array_type_size = size_ty ctxt.tdecls t |> Int64.of_int in 
+                              (*calculate index for memory address*)
+                              [compile_arr_op; 
+                              (Imulq, [Imm (Lit array_type_size); temp2]);
+                              (Addq, [temp2; temp1])]
+                              @ helper t xs           
+      | Namedt t, x -> helper (lookup ctxt.tdecls t) x
+      | t ,(x::xs) -> failwith "not valid type"
+    end
+in helper curr path
 
 
 let compile_gep (ctxt:ctxt) (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
-let (t,point_addr) = op in
-let compiled_op1 = compile_operand ctxt temp1 in
-let rec calc_offset (curr_ty:ty) (curr_path:Ll.operand list):int64 = 
-  match curr_ty, curr_path with
-  |_,[] -> 0L
-  | Struct st, ((Const i)::xs) -> Int64.add (count_offset_struct ctxt st i) (calc_offset (List.nth st (Int64.to_int i)) xs)
-  | Array (_, arrtype), (x::xs) -> failwith "gep array not implemented"
-  | _,_ -> failwith "illegal type"
-in
-let offset_address = calc_offset t path in
-  match t with
-  | Ptr lltype -> []
-  | _ -> failwith "not a pointer"
+let (t, point_addr) = op in
+let compile_temp1 = compile_operand ctxt temp1 in
+let compile_index = compile_temp1 point_addr in
+begin match t with
+| Ptr t1 -> [compile_index] @ helper_gep ctxt (Array (1,t1)) path
+| _ -> failwith "not pointer"
+end
 
 
 
@@ -409,7 +427,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
             | Ptr t -> load_data ctxt op dst t
             | _ -> failwith "Invalid type to load"
           end
-        | Gep _ -> failwith "Gep not implemented"
+        | Gep (t,op,path) -> compile_gep ctxt (t,op) path @ [(Movq, [temp1; dst])]
         | _ -> failwith "Thou shall not be here"
       end
     | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
