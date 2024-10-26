@@ -264,8 +264,32 @@ let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
       in (4), but relative to the type f the sub-element picked out
       by the path so far
 *)
+let count_offset_struct (ctxt:ctxt) (t : Ll.ty list) (i:int64) : int64 =
+let rec helper (rest: Ll.ty list) (curr:int64) =
+match rest with
+| [] -> failwith "over the max index"
+|(x::xs)->  if curr < i then
+              Int64.add (size_ty ctxt.tdecls x|> Int64.of_int) (helper xs curr)
+            else
+              0L
+in
+helper t 0L
+
+
 let compile_gep (ctxt:ctxt) (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
-  failwith "compile_gep not implemented"
+let (t,point_addr) = op in
+let compiled_op1 = compile_operand ctxt temp1 in
+let rec calc_offset (curr_ty:ty) (curr_path:Ll.operand list):int64 = 
+  match curr_ty, curr_path with
+  |_,[] -> 0L
+  | Struct st, ((Const i)::xs) -> Int64.add (count_offset_struct ctxt st i) (calc_offset (List.nth st (Int64.to_int i)) xs)
+  | Array (_, arrtype), (x::xs) -> failwith "gep array not implemented"
+  | _,_ -> failwith "illegal type"
+in
+let offset_address = calc_offset t path in
+  match t with
+  | Ptr lltype -> []
+  | _ -> failwith "not a pointer"
 
 
 
