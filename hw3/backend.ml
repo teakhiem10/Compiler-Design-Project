@@ -133,7 +133,6 @@ let arg_loc (n : int) : operand =
       Ind3 (Lit offset, Rbp)
   end
 
-
 (* compiling call  ---------------------------------------------------------- *)
 
 (* You will probably find it helpful to implement a helper function that
@@ -154,29 +153,55 @@ let arg_loc (n : int) : operand =
    needed). ]
 *)
 
+let rec sublist (list :'a list) (l:int) (r:int) : 'a list = 
+  match list, l, r with
+  | [], _, _ -> []
+  | _, 0, 0 -> []
+  | (x::xs), 0, n -> x :: sublist xs 0 (n-1)
+  | (_::xs), n, m -> sublist xs (n-1) (m-1)
+
 let compile_call (ctxt:ctxt) (uid:uid) (t:ty) (fn:Ll.operand) (ops: (ty * Ll.operand) list) : ins list = 
   let label = 
     match fn with
     | Null | Const _ -> failwith "Invalid function operand"
     | Gid id | Id id ->  Platform.mangle id
   in
-  let num_args = List.length ops in
-  let helper = fun i -> fun  (_, op)  -> 
+  let register_args = sublist ops 0 6 in
+  let memory_args = sublist ops 6 (-1) in
+  let store_register_arg = fun i -> fun  (_, op)  -> 
     if i < 6 then [
       compile_operand ctxt temp1 op;
       (Movq, [temp1; arg_loc i])
-    ] else [
-      compile_operand ctxt temp1 op;
-      (Pushq, [temp1])
-    ] in
-  let store_arguments = List.mapi helper ops |> List.flatten in
+    ] else failwith "Too many register arguments" in
+  let store_memory_arg = fun (_, op) -> [compile_operand ctxt temp1 op; (Pushq, [temp1])] in
+
+  let stack_alignment_init = [
+    (Movq, [Reg Rsp; Reg Rbx]); (* Store stack pointer in rbx before aligning (rbx is callee saved )*)
+    (Movq, [Reg Rsp; temp1]);
+    (Shrq, [Imm(Lit 4L); temp1]); (* First align to 16 bytes by discarding bottom 4 bits*)
+    (Shlq, [Imm(Lit 4L); temp1])
+  ] @ begin
+    if ((List.length memory_args) mod 2) = 0 then []
+       else [(Subq, [Imm (Lit 8L); temp1])] (* If uneven number of memory operands, 
+                                    subtract 8 from rsp to make it 16 byte aligned after args are pushed*)
+      end 
+      @ [(Movq, [temp1; Reg Rsp])]
+    in
+
+  let store_arguments = 
+    (register_args |> List.mapi store_register_arg) @
+    (memory_args |> List.rev |> List.map store_memory_arg) |> List.flatten in
   let assignment = 
     match t with
     | Void -> [] 
     | _ -> [(Movq, [Reg Rax; lookup ctxt.layout uid])]
   in
-  let cleanup = if num_args < 6 then [] else [(Addq, [Imm (Lit (Int64.of_int ( 8 * (num_args - 6)))); Reg Rsp])] in
-  store_arguments @ [(Callq, [Imm (Lbl label)])] @ assignment @ cleanup
+  let cleanup = [(Movq, [Reg Rbx; Reg Rsp])] in
+  stack_alignment_init @ 
+  store_arguments @ 
+  [(Callq, [Imm (Lbl label)])] @ 
+  assignment @ 
+  cleanup
 
 
 (* compiling getelementptr (gep)  ------------------------------------------- *)
@@ -209,7 +234,10 @@ let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
   | Struct types -> 
     List.map (size_ty tdecls) types |> 
     List.fold_left (+) 0 
-  | _ -> failwith "Invalid type"
+  | Void |Fun _ | I8 -> 0
+  | _ ->  print_endline @@ Llutil.string_of_ty t;
+          print_endline @@ "-------------------------";
+          failwith "Invalid type"
 
 
 
@@ -240,8 +268,52 @@ let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
       in (4), but relative to the type f the sub-element picked out
       by the path so far
 *)
+let count_offset_struct (ctxt:ctxt) (t : Ll.ty list) (i:int64) : int64 =
+let rec helper (rest: Ll.ty list) (curr:int64) =
+match rest with
+| [] -> (*print_endline @@ string_of_int (curr |> Int64.to_int);
+        print_endline @@ string_of_int (i |> Int64.to_int);
+        print_endline @@ "-------------------------";*)
+        failwith "over the max index"
+|(x::xs)->  if curr < i then
+              Int64.add (size_ty ctxt.tdecls x|> Int64.of_int) (helper xs (Int64.add curr 1L))
+            else
+              0L
+in
+helper t 0L
+let helper_gep (ctxt:ctxt) (curr:ty) (path:Ll.operand list) : ins list =
+  let compile_temp2 = compile_operand ctxt temp2 in
+  let rec helper (curr_type:ty) (curr_path:Ll.operand list) : ins list =
+    begin match curr_type, curr_path with
+      | _, [] -> []
+
+      | Struct st, (Const i)::xs -> let offset = count_offset_struct ctxt st i in (*calculate offset until 
+                                                                                  right part of struct*)
+                              let compile_offset = compile_temp2 (Const offset) in (*offset saved in %Rcx*)
+                              [compile_offset ; (Addq, [temp2; temp1])] @ (*Calc current offset from Base Address*)
+                                            helper (List.nth st (Int64.to_int i)) xs
+      | Struct _, _ -> failwith "not Const for Struct"
+      | Array (_,t), x::xs -> let compile_arr_op = compile_temp2 x in (*move index to %Rcx*)
+                              let array_type_size = size_ty ctxt.tdecls t |> Int64.of_int in 
+                              (*calculate index for memory address*)
+                              [compile_arr_op; 
+                              (Imulq, [Imm (Lit array_type_size); temp2]);
+                              (Addq, [temp2; temp1])]
+                              @ helper t xs           
+      | Namedt t, x -> helper (lookup ctxt.tdecls t) x
+      | _ ,_ -> failwith "not valid type"
+    end
+in helper curr path
+
+
 let compile_gep (ctxt:ctxt) (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
-  failwith "compile_gep not implemented"
+let (t, point_addr) = op in
+let compile_temp1 = compile_operand ctxt temp1 in
+let compile_index = compile_temp1 point_addr in
+begin match t with
+| Ptr t1 -> [compile_index] @ helper_gep ctxt (Array (1,t1)) path
+| _ -> failwith "not pointer"
+end
 
 
 
@@ -361,7 +433,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
             | Ptr t -> load_data ctxt op dst t
             | _ -> failwith "Invalid type to load"
           end
-        | Gep _ -> failwith "Gep not implemented"
+        | Gep (t,op,path) -> compile_gep ctxt (t,op) path @ [(Movq, [temp1; dst])]
         | _ -> failwith "Thou shall not be here"
       end
     | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
@@ -503,7 +575,6 @@ let make_entry_instr (arg: uid list) (l:layout): ins list =
 
 let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
   let st_layout = stack_layout f_param f_cfg in
-  print_endline @@ string_of_layout st_layout;
   let ctxt = {tdecls = tdecls; layout = st_layout} in
   let entry = make_entry_instr f_param st_layout in
   let entry_block = Asm.gtext name (entry @ compile_block name ctxt (fst f_cfg)) in
