@@ -13,6 +13,11 @@ open X86
 
 (* helpers ------------------------------------------------------------------ *)
 
+(* Helper registers to use to store temporary results*)
+
+let temp1 = Reg Rax
+let temp2 = Reg Rcx
+
 (* Map LL comparison operations to X86 condition codes *)
 let compile_cnd = function
   | Ll.Eq  -> X86.Eq
@@ -107,6 +112,26 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
         (Movq, [operandLL_in_x86; dest])
     end
 
+(* This helper function computes the location of the nth incoming
+   function argument: either in a register or relative to %rbp,
+   according to the calling conventions.  You might find it useful for
+   compile_fdecl.
+
+   [ NOTE: the first six arguments are numbered 0 .. 5 ]
+*)
+
+let arg_loc (n : int) : operand =
+  begin match n with
+    | 0 -> Reg Rdi
+    | 1 -> Reg Rsi
+    | 2 -> Reg Rdx
+    | 3 -> Reg Rcx
+    | 4 -> Reg R08
+    | 5 -> Reg R09
+    | _ -> 
+      let offset = Int64.mul (Int64.sub (Int64.of_int n) 4L) 8L in 
+      Ind3 (Lit offset, Rbp)
+  end
 
 
 (* compiling call  ---------------------------------------------------------- *)
@@ -129,7 +154,29 @@ let compile_operand (ctxt:ctxt) (dest:X86.operand) : Ll.operand -> ins =
    needed). ]
 *)
 
-
+let compile_call (ctxt:ctxt) (uid:uid) (t:ty) (fn:Ll.operand) (ops: (ty * Ll.operand) list) : ins list = 
+  let label = 
+    match fn with
+    | Null | Const _ -> failwith "Invalid function operand"
+    | Gid id | Id id ->  Platform.mangle id
+  in
+  let num_args = List.length ops in
+  let helper = fun i -> fun  (_, op)  -> 
+    if i < 6 then [
+      compile_operand ctxt temp1 op;
+      (Movq, [temp1; arg_loc i])
+    ] else [
+      compile_operand ctxt temp1 op;
+      (Pushq, [temp1])
+    ] in
+  let store_arguments = List.mapi helper ops |> List.flatten in
+  let assignment = 
+    match t with
+    | Void -> [] 
+    | _ -> [(Movq, [Reg Rax; lookup ctxt.layout uid])]
+  in
+  let cleanup = if num_args < 6 then [] else [(Addq, [Imm (Lit (Int64.of_int ( 8 * (num_args - 6)))); Reg Rsp])] in
+  store_arguments @ [(Callq, [Imm (Lbl label)])] @ assignment @ cleanup
 
 
 (* compiling getelementptr (gep)  ------------------------------------------- *)
@@ -230,7 +277,7 @@ let get_op (op:Ll.operand) (layout:layout)=
     lookup layout mgld_lbl
   | Id id -> lookup layout id
 
-let compile_bop (bop:bop) (temp1: operand) (temp2:operand): X86.ins list = 
+let compile_bop (bop:bop) : X86.ins list = 
   begin match bop with
     | Add -> [(Addq, [temp2; temp1])]; 
     | Sub -> [(Subq, [temp2; temp1])];
@@ -286,8 +333,6 @@ let store_data (ctxt:ctxt) (src:Ll.operand) (dst:Ll.operand) (ty:ty) : ins list 
   ]
 
 let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
-  let temp1 = Reg Rax in
-  let temp2 = Reg Rcx in
   let compile_op1 = compile_operand ctxt temp1 in
   let compile_op2 = compile_operand ctxt temp2 in
   begin match i with 
@@ -295,7 +340,7 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
       let dst = lookup ctxt.layout uid in
       begin match i with
         | Binop  (bop, _, op1, op2)->  [compile_op1 op1] @ [compile_op2 op2] @ 
-                                       (compile_bop bop temp1 temp2) @
+                                       (compile_bop bop) @
                                        [(Movq, [temp1; dst])];
         | Icmp (cnd, _, o1, o2) -> 
           let op_1 = compile_op1 o1 in
@@ -316,12 +361,12 @@ let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
             | Ptr t -> load_data ctxt op dst t
             | _ -> failwith "Invalid type to load"
           end
-          | Gep (t1, op, ops) -> []
-        | _ -> failwith "compile_insn not fully implemented"
+        | Gep _ -> failwith "Gep not implemented"
+        | _ -> failwith "Thou shall not be here"
       end
     | Store (ty, op1, op2) -> store_data ctxt op1 op2 ty
-    | Bitcast (t1, op, t2) -> []
-    | _ -> failwith "compile_insn not fully implemented"
+    | Call (ty, fn, ops) -> compile_call ctxt uid ty fn ops
+    | Bitcast (_, op, _) -> [compile_operand ctxt temp1 op; (Movq, [Reg Rax; lookup ctxt.layout uid])]
   end
 
 
@@ -387,28 +432,6 @@ let compile_lbl_block fn lbl ctxt blk : elem =
 (* compile_fdecl ------------------------------------------------------------ *)
 
 
-(* This helper function computes the location of the nth incoming
-   function argument: either in a register or relative to %rbp,
-   according to the calling conventions.  You might find it useful for
-   compile_fdecl.
-
-   [ NOTE: the first six arguments are numbered 0 .. 5 ]
-*)
-
-let arg_loc (n : int) : operand =
-  begin match n with
-    | 0 -> Reg Rdi
-    | 1 -> Reg Rsi
-    | 2 -> Reg Rdx
-    | 3 -> Reg Rcx
-    | 4 -> Reg R08
-    | 5 -> Reg R09
-    | _ -> 
-      let offset = Int64.mul (Int64.sub (Int64.of_int n) 4L) 8L in 
-      Ind3 (Lit offset, Rbp)
-  end
-
-
 (* We suggest that you create a helper function that computes the
    stack layout for a given function declaration.
 
@@ -421,7 +444,9 @@ let arg_loc (n : int) : operand =
 let right_instr (i:insn) : bool = 
   begin match i with
     | Binop _| Alloca _ | Load _ | Icmp _
-    | Call _ | Bitcast _ | Gep _ -> true
+    | Bitcast _ | Gep _ -> true
+    | Call (Void, _, _) -> false
+    | Call _ -> true
     | _ -> false
   end
 
@@ -462,7 +487,10 @@ let make_entry_instr (arg: uid list) (l:layout): ins list =
   let rec helper (rest: uid list) (i:int) : ins list =
     begin match rest with
       | [] -> []
-      | x::xs -> (Movq, [arg_loc i; lookup l x]) :: helper xs (i+1) (*only arguments copy*)
+      | x::xs -> [
+        (Movq, [arg_loc i; temp1]); (* Moving argument to register first, as it could be a memory location *)
+        (Movq, [temp1; lookup l x])
+       ] @ helper xs (i+1) (*only arguments copy*)
     end
   in 
   let num_stack_bytes = Int64.mul 8L (Int64.of_int (List.length l)) in
