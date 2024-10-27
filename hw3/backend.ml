@@ -234,7 +234,10 @@ let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
   | Struct types -> 
     List.map (size_ty tdecls) types |> 
     List.fold_left (+) 0 
-  | _ -> failwith "Invalid type"
+  | Void |Fun _ | I8 -> 0
+  | _ ->  print_endline @@ Llutil.string_of_ty t;
+          print_endline @@ "-------------------------";
+          failwith "Invalid type"
 
 
 
@@ -268,9 +271,12 @@ let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
 let count_offset_struct (ctxt:ctxt) (t : Ll.ty list) (i:int64) : int64 =
 let rec helper (rest: Ll.ty list) (curr:int64) =
 match rest with
-| [] -> failwith "over the max index"
+| [] -> (*print_endline @@ string_of_int (curr |> Int64.to_int);
+        print_endline @@ string_of_int (i |> Int64.to_int);
+        print_endline @@ "-------------------------";*)
+        failwith "over the max index"
 |(x::xs)->  if curr < i then
-              Int64.add (size_ty ctxt.tdecls x|> Int64.of_int) (helper xs curr)
+              Int64.add (size_ty ctxt.tdecls x|> Int64.of_int) (helper xs (Int64.add curr 1L))
             else
               0L
 in
@@ -295,7 +301,7 @@ let helper_gep (ctxt:ctxt) (curr:ty) (path:Ll.operand list) : ins list =
                               (Addq, [temp2; temp1])]
                               @ helper t xs           
       | Namedt t, x -> helper (lookup ctxt.tdecls t) x
-      | t ,(x::xs) -> failwith "not valid type"
+      | _ ,_ -> failwith "not valid type"
     end
 in helper curr path
 
