@@ -29,6 +29,7 @@
   ("null", NULL);
   ("void", TVOID);
   ("int", TINT);
+  ("bool", TBOOL);
   ("string", TSTRING);
   ("else", ELSE);
   ("if", IF);

@@ -248,7 +248,8 @@ let old_student_tests = [
   ; ("oatprograms/maxsubsequence.oat", "", "107")
 ]
 
-let student_tests = [] 
+let student_tests = [("parse exp test 8", exp_test "1-2 == 3+4" (no_loc (Bop (Eq,no_loc (Bop (Sub,no_loc (CInt 1L),no_loc (CInt 2L))),no_loc (Bop (Add,no_loc (CInt 3L),no_loc (CInt 4L)))))))
+] 
 
 let tests : suite =
   [ GradedTest("parse tests", 15, parse_tests);
@@ -258,7 +259,7 @@ let tests : suite =
     GradedTest("easy tests", 10, executed_oat_file easy_tests);
     GradedTest("medium tests", 10, executed_oat_file medium_tests);
     GradedTest("hard tests", 10, executed_oat_file (hard_tests @ old_student_tests));
-    GradedTest("hidden tests", 20, executed_oat_file student_tests);
+    GradedTest("self tests", 20, student_tests);
   ]
 
 let graded_tests : suite = tests

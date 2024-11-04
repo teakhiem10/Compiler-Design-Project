@@ -14,6 +14,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token <string> IDENT
 
 %token TINT     /* int */
+%token TBOOL
 %token TVOID    /* void */
 %token TSTRING  /* string */
 %token IF       /* if */
@@ -50,6 +51,13 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token BANG     /* ! */
 %token GLOBAL   /* global */
 
+%left BITOR
+%left BITAND
+%left OR
+%left AND
+%left EQ NEQ
+%left LT LTEQ GT GTEQ
+%left SHLT SHRA SHRL
 %left PLUS DASH
 %left STAR
 %nonassoc BANG
@@ -93,6 +101,7 @@ arglist:
 ty:
   | TINT   { TInt }
   | r=rtyp { TRef r } 
+  | TBOOL  { TBool}
 
 %inline ret_ty:
   | TVOID  { RetVoid }
