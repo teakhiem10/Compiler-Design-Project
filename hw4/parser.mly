@@ -28,8 +28,20 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token PLUS     /* + */
 %token DASH     /* - */
 %token STAR     /* * */
+%token SHLT     /*<<*/
+%token SHRL     /*>>*/
+%token SHRA     /*>>>*/
+%token LT       /* < */
+%token LTEQ     /* <= */
+%token GT       /* > */
+%token GTEQ     /* >= */
 %token EQEQ     /* == */
 %token EQ       /* = */
+%token NEQ      /* != */
+%token AND    /* & */
+%token OR     /* | */
+%token BITAND   /* [&] */
+%token BITOR    /* [|]*/
 %token LPAREN   /* ( */
 %token RPAREN   /* ) */
 %token LBRACKET /* [ */
@@ -94,7 +106,19 @@ ty:
   | PLUS   { Add }
   | DASH   { Sub }
   | STAR   { Mul }
+  | SHLT   { Shl }
+  | SHRL   { Shr }
+  | SHRA   { Sar }
+  | LT     { Lt  }
+  | LTEQ   { Lte }
+  | GT     { Gt }
+  | GTEQ   { Gte }
   | EQEQ   { Eq }
+  | NEQ    { Neq }
+  | AND    { And }
+  | OR     { Or }
+  | BITAND { IAnd } 
+  | BITOR  { IOr }
 
 %inline uop:
   | DASH  { Neg }
