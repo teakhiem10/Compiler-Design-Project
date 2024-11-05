@@ -23,6 +23,8 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token WHILE    /* while */
 %token RETURN   /* return */
 %token VAR      /* var */
+%token NEW      /* new */
+
 %token SEMI     /* ; */
 %token COMMA    /* , */
 %token LBRACE   /* { */
@@ -135,9 +137,16 @@ ty:
   | BANG  { Lognot }
   | TILDE { Bitnot }
 
+%inline array_decl:
+  | NEW t=ty LBRACKET { t }
+
 gexp:
-  | t=rtyp NULL  { loc $startpos $endpos @@ CNull t }
-  | i=INT      { loc $startpos $endpos @@ CInt i }
+  | i=INT               { loc $startpos $endpos @@ CInt i }
+  | s=STRING            { loc $startpos $endpos @@ CStr s}
+  | t=rtyp NULL         { loc $startpos $endpos @@ CNull t }
+  | b=BOOL              { loc $startpos $endpos @@ CBool b }
+  | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, gexp) RBRACE
+                        { loc $startpos $endpos @@ CArr (t, es) }
 
 lhs:  
   | id=IDENT            { loc $startpos $endpos @@ Id id }
@@ -147,6 +156,7 @@ lhs:
 exp:
   | i=INT               { loc $startpos $endpos @@ CInt i }
   | b=BOOL              { loc $startpos $endpos @@ CBool b }
+  | s=STRING            { loc $startpos $endpos @@ CStr s }
   | t=rtyp NULL         { loc $startpos $endpos @@ CNull t }
   | e1=exp b=bop e2=exp { loc $startpos $endpos @@ Bop (b, e1, e2) }
   | u=uop e=exp         { loc $startpos $endpos @@ Uop (u, e) }
@@ -155,6 +165,11 @@ exp:
                         { loc $startpos $endpos @@ Index (e, i) }
   | e=exp LPAREN es=separated_list(COMMA, exp) RPAREN
                         { loc $startpos $endpos @@ Call (e,es) }
+  | t=array_decl RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE 
+                        { loc $startpos $endpos @@ CArr (t, es) }
+  /* There is no check, whether or not t is of a refernce type, which better not happen*/
+  | t=array_decl e=exp RBRACKET 
+                        { loc $startpos $endpos @@ NewArr (t, e) }
   | LPAREN e=exp RPAREN { e } 
 
 vdecl:
