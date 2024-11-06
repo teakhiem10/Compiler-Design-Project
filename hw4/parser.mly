@@ -20,6 +20,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token TSTRING  /* string */
 %token IF       /* if */
 %token ELSE     /* else */
+%token FOR      /* for */
 %token WHILE    /* while */
 %token RETURN   /* return */
 %token VAR      /* var */
@@ -183,8 +184,9 @@ stmt:
   | ifs=if_stmt         { ifs }
   | RETURN SEMI         { loc $startpos $endpos @@ Ret(None) }
   | RETURN e=exp SEMI   { loc $startpos $endpos @@ Ret(Some e) }
+  | f=for_stmt        { f }
   | WHILE LPAREN e=exp RPAREN b=block  
-                        { loc $startpos $endpos @@ While(e, b) } 
+                        { loc $startpos $endpos @@ While(e, b) }
 
 block:
   | LBRACE stmts=list(stmt) RBRACE { stmts }
@@ -197,3 +199,9 @@ else_stmt:
   | (* empty *)       { [] }
   | ELSE b=block      { b }
   | ELSE ifs=if_stmt  { [ ifs ] }
+
+for_stmt:
+  | FOR LPAREN v=separated_list(COMMA,vdecl) SEMI e=exp SEMI st=stmt RPAREN b=block {loc $startpos $endpos @@ For (v, Some e,Some st,b)}
+  | FOR LPAREN v=separated_list(COMMA,vdecl) SEMI       SEMI st=stmt RPAREN b=block {loc $startpos $endpos @@ For (v, None, Some st, b)}
+  | FOR LPAREN v=separated_list(COMMA,vdecl) SEMI e=exp SEMI         RPAREN b=block {loc $startpos $endpos @@ For (v,Some e, None, b)}
+  | FOR LPAREN v=separated_list(COMMA,vdecl) SEMI       SEMI         RPAREN b=block {loc $startpos $endpos @@ For (v,None,None,b)}
