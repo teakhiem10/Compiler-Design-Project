@@ -166,11 +166,15 @@ exp:
                         { loc $startpos $endpos @@ Index (e, i) }
   | e=exp LPAREN es=separated_list(COMMA, exp) RPAREN
                         { loc $startpos $endpos @@ Call (e,es) }
-  | t=array_decl RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE 
+  //    t=btyp does not work, results in conflicts
+  | NEW t=ty LBRACKET e=exp RBRACKET 
+                        { 
+                          match t with 
+                          | TInt | TBool -> loc $startpos $endpos @@ NewArr (t, e)
+                          | _ -> failwith "Only basic types allowed"  
+                        } (* This feels really wrong to put here *)
+  | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE 
                         { loc $startpos $endpos @@ CArr (t, es) }
-  /* There is no check, whether or not t is of a refernce type, which better not happen*/
-  | t=array_decl e=exp RBRACKET 
-                        { loc $startpos $endpos @@ NewArr (t, e) }
   | LPAREN e=exp RPAREN { e } 
 
 vdecl:
