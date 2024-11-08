@@ -304,8 +304,33 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
 
 *)
 
+let bop_convert (bop:Ast.binop) : Ll.bop = 
+  match bop with
+  | Add -> Add
+  | Sub -> Sub
+  | Mul -> Mul
+  | And -> And
+  | Or -> Or
+  | IAnd -> And
+  | IOr -> Or
+  | Shl -> Lshr
+  | Shr -> Lshr
+  | Sar -> Ashr
+  | _ -> failwith "Not implemented"
+
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
-  failwith "cmp_exp not implemented"
+  match exp.elt with
+  | CNull rty -> Ptr (cmp_rty rty), Null, []
+  | CInt i -> I64, Const i, []
+  | CBool b -> I1, Const (if b then 1L else 0L), []
+  | Id id -> let ty, op = Ctxt.lookup id c in ty, op, []
+  | Bop (bop, e1, e2) -> 
+    let t1, t2, rt = typ_of_binop bop in
+    let _, o1, s1 = cmp_exp c e1 in
+    let _, o2, s2 = cmp_exp c e2 in
+    let op = gensym "x" in
+    cmp_ty rt, Id op, s1 >@ s2 >@ [I (op, Binop (bop_convert bop, cmp_ty rt, o1, o2))]
+  | _ -> failwith "cmp_exp not implemented"
 
 (* Compile a statement in context c with return typ rt. Return a new context, 
    possibly extended with new local bindings, and the instruction stream
@@ -335,7 +360,13 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
  *)
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
-  failwith "cmp_stmt not implemented"
+  match stmt.elt with 
+  | Ret e_opt -> begin 
+      match e_opt with 
+      | None -> c, [T (Ret (Void, None))]
+      | Some exp -> let ty, op, s = cmp_exp c exp in c, s >@ [(T (Ret (ty, Some op)))]
+    end
+  | _ -> failwith "cmp_stmt not implemented"
 
 (* Compile a series of statements *)
 and cmp_block (c:Ctxt.t) (rt:Ll.ty) (stmts:Ast.block) : Ctxt.t * stream =
@@ -366,7 +397,23 @@ let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    in well-formed programs. (The constructors starting with C). 
 *)
 let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
-  failwith "cmp_global_ctxt not implemented"
+  let helper (c:Ctxt.t) (d:Ast.decl) : Ctxt.t = 
+    begin match d with
+    | Gfdecl _ -> c
+    | Gvdecl {elt; _} -> 
+      let id = elt.name in 
+      let rhs = begin match elt.init.elt with
+      | CNull rty ->  (cmp_rty rty, Null)
+      | CBool b -> (I1, Const (if b then 1L else 0L))
+      | CInt i -> (I64, Const i)
+      | CStr s -> (Ptr I8, Gid s)
+      | _ -> failwith "Arrays Not implemented"
+      end
+      in
+      Ctxt.add c id rhs
+    end
+    in
+  List.fold_left helper c p
 
 (* Compile a function declaration in global context c. Return the LLVMlite cfg
    and a list of global declarations containing the string literals appearing
@@ -381,7 +428,14 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
  *)
 
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
-  failwith "cmp_fdecl not implemented"
+  let fn = f.elt in
+  let cfg, _ = cfg_of_stream @@ snd @@ cmp_block c (cmp_ret_ty fn.frtyp) fn.body in
+  {
+    f_ty = List.map (fun (ty, _) -> cmp_ty ty) fn.args, cmp_ret_ty fn.frtyp; 
+    f_param = List.map snd f.elt.args; 
+    f_cfg = cfg
+  }, []
+  (*failwith "cmp_fdecl not implemented"*)
 
 (* Compile a global initializer, returning the resulting LLVMlite global
    declaration, and a list of additional global declarations.
@@ -396,7 +450,12 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
 *)
 
 let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
-  failwith "cmp_gexp not implemented"
+  match e.elt with 
+  | CNull rty -> (cmp_rty rty, GNull), []
+  | CBool b -> (I1, GInt (if b then 1L else 0L)), []
+  | CInt i -> (I64, GInt i), []
+  | CStr s -> (Array (1 + String.length s, I8), GString s), []
+  | _ -> failwith "cmp_gexp not implemented"
 
 (* Oat internals function context ------------------------------------------- *)
 let internals = [
