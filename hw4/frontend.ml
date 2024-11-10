@@ -302,9 +302,8 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
    - use the provided "oat_alloc_array" function to implement literal arrays
      (CArr) and the (NewArr) expressions
 
-*)
-
-let bop_convert (bop:Ast.binop) : Ll.bop = 
+     *)
+let cmp_bop (bop:Ast.binop) :Ll.bop = 
   match bop with
   | Add -> Add
   | Sub -> Sub
@@ -313,10 +312,29 @@ let bop_convert (bop:Ast.binop) : Ll.bop =
   | Or -> Or
   | IAnd -> And
   | IOr -> Or
-  | Shl -> Lshr
+  | Shl -> Shl
   | Shr -> Lshr
   | Sar -> Ashr
-  | _ -> failwith "Not implemented"
+  | _ -> failwith "Not a valid bop!"
+
+let cmp_condition (bop:Ast.binop) : Ll.cnd = 
+  match bop with 
+  | Eq -> Eq
+  | Neq -> Ne
+  | Lt -> Slt
+  | Lte -> Sle
+  | Gt -> Sgt
+  | Gte -> Sge
+  | _ -> failwith "Not a valid condition!"
+
+
+let handle_bop (bop:Ast.binop) (rt:Ast.ty) (o1:operand) (o2:operand) : Ll.insn = 
+  match bop with
+  | Add | Sub | Mul | And | Or | IAnd | IOr | Shl | Shr | Sar -> 
+    Binop (cmp_bop bop, cmp_ty rt, o1, o2)
+  | Eq | Neq | Lt | Lte | Gt | Gte -> 
+    Icmp (cmp_condition bop, cmp_ty rt, o1, o2)
+
 
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   match exp.elt with
@@ -329,8 +347,9 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let _, o1, s1 = cmp_exp c e1 in
     let _, o2, s2 = cmp_exp c e2 in
     let op = gensym "x" in
-    cmp_ty rt, Id op, s1 >@ s2 >@ [I (op, Binop (bop_convert bop, cmp_ty rt, o1, o2))]
-  | Uop (op, e) -> let _, rt = typ_of_unop op in
+    let insn = handle_bop bop rt o1 o2 in
+    cmp_ty rt, Id op, s1 >@ s2 >@ [I (op, insn)]
+  | Uop (op, e) -> let t1, rt = typ_of_unop op in
                    let _, o, s = cmp_exp c e in
                    let t = cmp_ty rt in
                    let temp = gensym "a" in 
@@ -489,6 +508,7 @@ let builtins =
 
 (* Compile a OAT program to LLVMlite *)
 let cmp_prog (p:Ast.prog) : Ll.prog =
+  (* print_endline (Astlib.string_of_prog p); *)
   (* add built-in functions to context *)
   let init_ctxt = 
     List.fold_left (fun c (i, t) -> Ctxt.add c i (Ll.Ptr t, Gid i))
