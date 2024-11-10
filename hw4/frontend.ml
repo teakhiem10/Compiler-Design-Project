@@ -403,6 +403,16 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
                       let new_ctxt = (Ctxt.add c id (ty,op)) in
                       let (_,ope) = Ctxt.lookup id new_ctxt in
                        new_ctxt , [(E (id, (Alloca ty)))] >@ s
+  | If (e, b1, b2) ->   let (ty, op, s_e) = cmp_exp c e in
+                        let (c1,s1) = cmp_block c rt b1 in 
+                        let (c2,s2) = cmp_block c1 rt b2 in 
+                        let ifexp = gensym "i" in
+                        let ifs = gensym "if" in
+                        let el = gensym "else" in
+                        let if_block = [(L ifs);] >@ s1 in
+                        let else_block = [(L ifs);] >@ s2 in
+                        c2, s_e >@ [(T (Cbr (op, ifs, el)))]
+                        
   | _ -> failwith "cmp_stmt not fully implemented"
 
 (* Compile a series of statements *)
