@@ -366,7 +366,8 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | None -> c, [T (Ret (Void, None))]
       | Some exp -> let ty, op, s = cmp_exp c exp in c, s >@ [(T (Ret (ty, Some op)))]
     end
-  | _ -> failwith "cmp_stmt not implemented"
+  | Decl (id, exp) -> let ty, op, s = cmp_exp c exp in (Ctxt.add c id (ty,op)), s >@ [(E (id, (Alloca ty)))]
+  | _ -> failwith "cmp_stmt not fully implemented"
 
 (* Compile a series of statements *)
 and cmp_block (c:Ctxt.t) (rt:Ll.ty) (stmts:Ast.block) : Ctxt.t * stream =
