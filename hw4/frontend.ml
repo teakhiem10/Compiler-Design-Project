@@ -341,6 +341,11 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CNull rty -> Ptr (cmp_rty rty), Null, []
   | CInt i -> I64, Const i, []
   | CBool b -> I1, Const (if b then 1L else 0L), []
+  | CStr s -> 
+    let id = gensym "str" in
+    let ty = Array (String.length s + 1, I8) in
+    let op = Gid id in
+    ty, op, [G (id, (ty, GString s))]
   | Id id -> let ty, op = Ctxt.lookup id c in ty, op, []
   | Bop (bop, e1, e2) -> 
     let t1, t2, rt = typ_of_binop bop in
