@@ -84,6 +84,11 @@ module Ctxt = struct
   
 end
 
+let string_of_ctxt (c:Ctxt.t) : string = 
+  let helper (id, (ty, op)) : string = 
+    Printf.sprintf "%s: %s %s" id (Llutil.string_of_ty ty) (Llutil.string_of_operand op)
+  in List.map helper c |> String.concat "\n"
+
 (* compiling OAT types ------------------------------------------------------ *)
 
 (* The mapping of source types onto LLVMlite is straightforward. Booleans and ints
@@ -346,7 +351,25 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let ty = Array (String.length s + 1, I8) in
     let op = Gid id in
     ty, op, [G (id, (ty, GString s))]
-  | Id id -> let ty, op = Ctxt.lookup id c in ty, op, []
+  | Id i -> 
+    let ty, op = Ctxt.lookup i c in
+    begin match op with
+    | Id _ -> 
+      let id = gensym i in
+      ty, Id id, [I (id, Load (Ptr ty, op))]
+    | _ -> ty, op, []
+    end
+  | Call (fn_exp, args) -> 
+    let f_ty, f_op, f_stream = (*print_endline @@ Astlib.string_of_exp fn_exp;*) cmp_exp c fn_exp in
+    begin match f_ty with
+    | Ptr (Fun (_,fty)) -> 
+      let compiled_args = List.map (cmp_exp c) args in 
+      let compiled_ops = List.map (fun (ty, op, _) -> (ty, op)) compiled_args in
+      let streams = List.map (fun (_,_,strm) -> strm) compiled_args |> List.flatten in
+      let op = gensym "call_result" in
+      fty, Id op, streams >@ f_stream >@ [I (op, Call (fty, f_op, compiled_ops))]
+    | _ -> failwith "Not a valid function type"
+    end 
   | Bop (bop, e1, e2) -> 
     let t1, t2, rt = typ_of_binop bop in
     let _, o1, s1 = cmp_exp c e1 in
@@ -393,16 +416,17 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
  *)
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
+  (*print_endline @@ string_of_ctxt c;*)
   match stmt.elt with 
   | Ret e_opt -> begin 
       match e_opt with 
       | None -> c, [T (Ret (Void, None))]
       | Some exp -> let ty, op, s = cmp_exp c exp in c, s >@ [(T (Ret (ty, Some op)))]
     end
-  | Decl (id, exp) -> let ty, op, s = cmp_exp c exp in 
-                      let new_ctxt = (Ctxt.add c id (ty,op)) in
-                      let (_,ope) = Ctxt.lookup id new_ctxt in
-                       new_ctxt , [(E (id, (Alloca ty)))] >@ s
+  | Decl (id, exp) -> 
+    let ty, op, s = cmp_exp c exp in 
+
+    (Ctxt.add c id (ty, Id id)), s >@ [E (id, (Alloca ty)); I (id, Store (ty, op, Id id))]
   | _ -> failwith "cmp_stmt not fully implemented"
 
 (* Compile a series of statements *)
@@ -466,7 +490,11 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
 
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
   let fn = f.elt in
-  let cfg, _ = cfg_of_stream @@ snd @@ cmp_block c (cmp_ret_ty fn.frtyp) fn.body in
+  let compiled_args = List.map (fun (ty, id) -> (id, (cmp_ty ty, gensym id))) fn.args in
+  let new_ctxt = List.fold_left (fun ctxt -> fun (oat_id, (ty, llvm_id)) -> Ctxt.add ctxt oat_id (ty, Id llvm_id)) c compiled_args in
+  let allocas = List.map (fun (id, (ty, operand)) -> [E (operand, Store (ty, Id id, Id operand)); E (operand, Alloca ty)]) compiled_args |> List.flatten in
+  let block_ctxt, block_stream = cmp_block new_ctxt (cmp_ret_ty fn.frtyp) fn.body in
+  let cfg, _ = cfg_of_stream (block_stream >@ allocas) in
   {
     f_ty = List.map (fun (ty, _) -> cmp_ty ty) fn.args, cmp_ret_ty fn.frtyp; 
     f_param = List.map snd f.elt.args; 
@@ -513,7 +541,6 @@ let builtins =
 
 (* Compile a OAT program to LLVMlite *)
 let cmp_prog (p:Ast.prog) : Ll.prog =
-  (* print_endline (Astlib.string_of_prog p); *)
   (* add built-in functions to context *)
   let init_ctxt = 
     List.fold_left (fun c (i, t) -> Ctxt.add c i (Ll.Ptr t, Gid i))
