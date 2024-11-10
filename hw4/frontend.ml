@@ -330,6 +330,9 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let _, o2, s2 = cmp_exp c e2 in
     let op = gensym "x" in
     cmp_ty rt, Id op, s1 >@ s2 >@ [I (op, Binop (bop_convert bop, cmp_ty rt, o1, o2))]
+  | Uop (op, e) -> let t1, rt = typ_of_unop op in
+                   let _, o, s = cmp_exp c e in
+                   let op = gensym "x" in failwith "uop not fully implemented"
   | _ -> failwith "cmp_exp not implemented"
 
 (* Compile a statement in context c with return typ rt. Return a new context, 
