@@ -430,16 +430,35 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     (Ctxt.add c id (ty, Id id)), s >@ [E (id, (Alloca ty)); I (id, Store (ty, op, Id id))]
 
   | If (e, b1, b2) ->   let (ty, op, s_e) = cmp_exp c e in
-                        let (c1,s1) = cmp_block c rt b1 in 
-                        let (c2,s2) = cmp_block c1 rt b2 in 
                         let ifs = gensym "if" in
                         let el = gensym "else" in
                         let end_if = gensym "end" in
+                        let (c1,s1) = cmp_block c rt b1 in 
+                        let (c2,s2) = cmp_block c1 rt b2 in 
                         let end_if_stream = [(T (Br end_if))] in
-                        let if_block = [(L ifs);] >@ s1 >@ end_if_stream in
-                        let else_block = [(L el);] >@ s2  >@ end_if_stream in
-                        let end_lbl = [(L end_if);] in
-                        c2, s_e >@ [(T (Cbr (op, ifs, el)))] >@ if_block >@ else_block >@ end_lbl
+                        let if_block = [(L ifs)] >@ s1 >@ end_if_stream in
+                        let else_block = [(L el)] >@ s2 in
+                        let end_lbl = [(L end_if)] in
+                        let s1_term = List.hd (List.rev s1) in
+                        let end_stream:stream = begin match s2 with
+                                          | [] -> begin match s1_term with
+                                                  | T(Ret (Void, None)) -> [T (Ret (Void, None))]
+                                                  | T (Ret (s1ty, Some s1op)) -> [T (Ret (s1ty, Some s1op))]
+                                                  | _ -> []
+                                                  end
+                                          | _ -> let s2_term = List.hd (List.rev s2) in
+                                                match (s1_term, s2_term) with
+                                                | (T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
+                                                | (T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
+                                                | _ -> []
+                                                
+                                          end
+                         in
+                         if s2 = [] then
+                          c2, s_e >@ [T (Cbr (op, ifs, end_if))] >@ if_block >@ end_lbl >@ end_stream
+                         else
+                          c2, s_e >@ [T (Cbr (op, ifs, el))] >@ if_block >@ else_block >@ end_lbl >@ end_stream
+
                         
   | _ -> failwith "cmp_stmt not fully implemented"
 
