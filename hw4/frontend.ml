@@ -354,14 +354,14 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let op = gensym "x" in
     let insn = handle_bop bop rt o1 o2 in
     cmp_ty rt, Id op, s1 >@ s2 >@ [I (op, insn)]
-  | Uop (op, e) -> let t1, rt = typ_of_unop op in
+  | Uop (op, e) -> let _, rt = typ_of_unop op in
                    let _, o, s = cmp_exp c e in
                    let t = cmp_ty rt in
                    let temp = gensym "a" in 
                     begin match op with
                     | Neg -> t, Id temp, s >@ [I (temp, Binop (Sub, t, (Const 0L), o))]
-                    | Lognot -> failwith "Lognot not implemented"
-                    | _ -> failwith "uop not fully implemented"
+                    | Lognot -> t, Id temp, s >@ [I (temp, Icmp (Eq, t, (Const 0L), o))]
+                    | Bitnot -> t, Id temp, s >@ [I (temp, Binop (Xor, t, (Const Int64.max_int), o))]
                     end
   | _ -> failwith "cmp_exp not implemented"
 
@@ -400,9 +400,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | Some exp -> let ty, op, s = cmp_exp c exp in c, s >@ [(T (Ret (ty, Some op)))]
     end
   | Decl (id, exp) -> let ty, op, s = cmp_exp c exp in 
-                      let new_ctxt = (Ctxt.add c id (ty,op))in
+                      let new_ctxt = (Ctxt.add c id (ty,op)) in
                       let (_,ope) = Ctxt.lookup id new_ctxt in
-                       new_ctxt , s >@ [(E (id, (Alloca ty)))]
+                       new_ctxt , [(E (id, (Alloca ty)))] >@ s
   | _ -> failwith "cmp_stmt not fully implemented"
 
 (* Compile a series of statements *)
