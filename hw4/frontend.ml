@@ -416,6 +416,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
  *)
 
+
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   (*print_endline @@ string_of_ctxt c;*)
   match stmt.elt with 
@@ -424,42 +425,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | None -> c, [T (Ret (Void, None))]
       | Some exp -> let ty, op, s = cmp_exp c exp in c, s >@ [(T (Ret (ty, Some op)))]
     end
-  | Decl (id, exp) -> 
-    let ty, op, s = cmp_exp c exp in 
-
-    (Ctxt.add c id (ty, Id id)), s >@ [E (id, (Alloca ty)); I (id, Store (ty, op, Id id))]
-
-  | If (e, b1, b2) ->   let (ty, op, s_e) = cmp_exp c e in
-                        let ifs = gensym "if" in
-                        let el = gensym "else" in
-                        let end_if = gensym "end" in
-                        let (c1,s1) = cmp_block c rt b1 in 
-                        let (c2,s2) = cmp_block c1 rt b2 in 
-                        let end_if_stream = [(T (Br end_if))] in
-                        let if_block = [(L ifs)] >@ s1 >@ end_if_stream in
-                        let else_block = [(L el)] >@ s2 in
-                        let end_lbl = [(L end_if)] in
-                        let s1_term = List.hd (List.rev s1) in
-                        let end_stream:stream = begin match s2 with
-                                          | [] -> begin match s1_term with
-                                                  | T(Ret (Void, None)) -> [T (Ret (Void, None))]
-                                                  | T (Ret (s1ty, Some s1op)) -> [T (Ret (s1ty, Some s1op))]
-                                                  | _ -> []
-                                                  end
-                                          | _ -> let s2_term = List.hd (List.rev s2) in
-                                                match (s1_term, s2_term) with
-                                                | (T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
-                                                | (T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
-                                                | _ -> []
-                                                
-                                          end
-                         in
-                         if s2 = [] then
-                          c2, s_e >@ [T (Cbr (op, ifs, end_if))] >@ if_block >@ end_lbl >@ end_stream
-                         else
-                          c2, s_e >@ [T (Cbr (op, ifs, el))] >@ if_block >@ else_block >@ end_lbl >@ end_stream
-
-                        
+  | Decl (id, exp) -> let ty, op, s = cmp_exp c exp in 
+                      (Ctxt.add c id (ty, Id id)), s >@ [E (id, (Alloca ty)); I (id, Store (ty, op, Id id))]
+  | If (e, b1, b2) ->  cmp_if c rt (e,b1,b2)
   | _ -> failwith "cmp_stmt not fully implemented"
 
 (* Compile a series of statements *)
@@ -468,21 +436,50 @@ and cmp_block (c:Ctxt.t) (rt:Ll.ty) (stmts:Ast.block) : Ctxt.t * stream =
       let c, stmt_code = cmp_stmt c rt s in
       c, code >@ stmt_code
     ) (c,[]) stmts
+(*compiles if-statements*)
+and cmp_if (c:Ctxt.t) (rt:Ll.ty)  ((e, b1, b2):exp node * stmt node list * stmt node list): Ctxt.t * stream = 
+      let (ty, op, s_e) = cmp_exp c e in
+      let ifs = gensym "if" in
+      let el = gensym "else" in
+      let end_if = gensym "end" in
+      let (c1,s1) = cmp_block c rt b1 in 
+      let (c2,s2) = cmp_block c1 rt b2 in 
+      let end_if_stream = [(T (Br end_if))] in
+      let if_block = [(L ifs)] >@ s1 >@ end_if_stream in
+      let else_block = [(L el)] >@ s2 in
+      let end_lbl = [(L end_if)] in
+      let s1_term = List.hd (List.rev s1) in
+      let end_stream:stream = begin match s2 with
+                                | [] -> begin match s1_term with
+                                        | T(Ret (Void, None)) -> [T (Ret (Void, None))]
+                                        | T (Ret (s1ty, Some s1op)) -> [T (Ret (s1ty, Some s1op))]
+                                        | _ -> []
+                                        end
+                                | _ -> let s2_term = List.hd (List.rev s2) in
+                                      match (s1_term, s2_term) with
+                                      | (T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
+                                      | (T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
+                                      | _ -> []
+                                end
+      in
+      if s2 = [] then
+        c2, s_e >@ [T (Cbr (op, ifs, end_if))] >@ if_block >@ end_lbl >@ end_stream
+      else
+        c2, s_e >@ [T (Cbr (op, ifs, el))] >@ if_block >@ else_block >@ end_lbl >@ end_stream
 
 
+      (* Adds each function identifer to the context at an
+        appropriately translated type.  
 
-(* Adds each function identifer to the context at an
-   appropriately translated type.  
-
-   NOTE: The Gid of a function is just its source name
-*)
-let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
-    List.fold_left (fun c -> function
-      | Ast.Gfdecl { elt={ frtyp; fname; args } } ->
-         let ft = TRef (RFun (List.map fst args, frtyp)) in
-         Ctxt.add c fname (cmp_ty ft, Gid fname)
-      | _ -> c
-    ) c p 
+        NOTE: The Gid of a function is just its source name
+      *)
+      let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
+          List.fold_left (fun c -> function
+            | Ast.Gfdecl { elt={ frtyp; fname; args } } ->
+              let ft = TRef (RFun (List.map fst args, frtyp)) in
+              Ctxt.add c fname (cmp_ty ft, Gid fname)
+            | _ -> c
+          ) c p 
 
 (* Populate a context with bindings for global variables 
    mapping OAT identifiers to LLVMlite gids and their types.
