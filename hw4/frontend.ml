@@ -341,6 +341,16 @@ let handle_bop (bop:Ast.binop) (rt:Ast.ty) (o1:operand) (o2:operand) : Ll.insn =
   | Eq | Neq | Lt | Lte | Gt | Gte -> 
     Icmp (cmp_condition bop, cmp_ty t1, o1, o2)
 
+let handle_call (cmp_exp:(exp node -> (Ll.ty * Ll.operand * stream))) (f:Ast.exp node) (args: Ast.exp node list) (op:id) : (Ll.ty * stream) = 
+  let f_ty, f_op, f_stream = (*print_endline @@ Astlib.string_of_exp fn_exp;*) cmp_exp f in
+    begin match f_ty with
+    | Ptr (Fun (_,fty)) -> 
+      let compiled_args = List.map cmp_exp args in 
+      let compiled_ops = List.map (fun (ty, op, _) -> (ty, op)) compiled_args in
+      let streams = List.map (fun (_,_,strm) -> strm) compiled_args |> List.flatten in
+      fty, streams >@ f_stream >@ [I (op, Call (fty, f_op, compiled_ops))]
+    | _ -> failwith "Not a valid function type"
+    end
 
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   let (resty,resop,resstream) =
@@ -362,16 +372,9 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | _ -> ty, op, []
     end
   | Call (fn_exp, args) -> 
-    let f_ty, f_op, f_stream = (*print_endline @@ Astlib.string_of_exp fn_exp;*) cmp_exp c fn_exp in
-    begin match f_ty with
-    | Ptr (Fun (_,fty)) -> 
-      let compiled_args = List.map (cmp_exp c) args in 
-      let compiled_ops = List.map (fun (ty, op, _) -> (ty, op)) compiled_args in
-      let streams = List.map (fun (_,_,strm) -> strm) compiled_args |> List.flatten in
       let op = gensym "call_result" in
-      fty, Id op, streams >@ f_stream >@ [I (op, Call (fty, f_op, compiled_ops))]
-    | _ -> failwith "Not a valid function type"
-    end 
+    let f_ty, f_stream = handle_call (cmp_exp c) fn_exp args op in
+    f_ty, Id op, f_stream
   | Bop (bop, e1, e2) -> 
     let t1, t2, rt = typ_of_binop bop in
     let _, o1, s1 = cmp_exp c e1 in
@@ -454,6 +457,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     end
   | Decl (id, exp) -> let ty, op, s = cmp_exp c exp in 
                       (Ctxt.add c id (ty, Id id)), s >@ [E (id, (Alloca ty)); I (id, Store (ty, op, Id id))]
+  | SCall (f, args) -> 
+    let _, f_stream = handle_call (cmp_exp c) f args "void_call" in 
+    c, f_stream
   | If (e, b1, b2) ->  cmp_if c rt (e,b1,b2)
   | While (e,b) -> failwith "while not implemented"
   | _ -> failwith "cmp_stmt not fully implemented"
