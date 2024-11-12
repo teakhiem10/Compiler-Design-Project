@@ -418,8 +418,14 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
-  (*print_endline @@ string_of_ctxt c;*)
+  print_endline @@ string_of_ctxt c;
   match stmt.elt with 
+  | Assn (p,e) -> let (ty,op,s) = cmp_exp c e in        
+                    begin match p.elt with
+                    | Id id -> let (_,store_op) = Ctxt.lookup id c in
+                                c,s >@ [I ("", Store (ty, op, store_op))]
+                    | _ -> failwith "Array not implemented"
+                    end
   | Ret e_opt -> begin 
       match e_opt with 
       | None -> c, [T (Ret (Void, None))]
@@ -428,6 +434,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   | Decl (id, exp) -> let ty, op, s = cmp_exp c exp in 
                       (Ctxt.add c id (ty, Id id)), s >@ [E (id, (Alloca ty)); I (id, Store (ty, op, Id id))]
   | If (e, b1, b2) ->  cmp_if c rt (e,b1,b2)
+  | While (e,b) -> failwith "while not implemented"
   | _ -> failwith "cmp_stmt not fully implemented"
 
 (* Compile a series of statements *)
@@ -444,9 +451,9 @@ and cmp_if (c:Ctxt.t) (rt:Ll.ty)  ((e, b1, b2):exp node * stmt node list * stmt 
       let end_if = gensym "end" in
       let (c1,s1) = cmp_block c rt b1 in 
       let (c2,s2) = cmp_block c1 rt b2 in 
-      let end_if_stream = [(T (Br end_if))] in
+      let end_if_stream = [(T (Br end_if))] in 
       let if_block = [(L ifs)] >@ s1 >@ end_if_stream in
-      let else_block = [(L el)] >@ s2 in
+      let else_block = [(L el)] >@ s2 >@ end_if_stream in
       let end_lbl = [(L end_if)] in
       let s1_term = List.hd (List.rev s1) in
       let end_stream:stream = begin match s2 with
@@ -466,7 +473,17 @@ and cmp_if (c:Ctxt.t) (rt:Ll.ty)  ((e, b1, b2):exp node * stmt node list * stmt 
         c2, s_e >@ [T (Cbr (op, ifs, end_if))] >@ if_block >@ end_lbl >@ end_stream
       else
         c2, s_e >@ [T (Cbr (op, ifs, el))] >@ if_block >@ else_block >@ end_lbl >@ end_stream
-
+and cmp_while (c:Ctxt.t) (rt:Ll.ty) ((e, b):exp node * stmt node list): Ctxt.t * stream = 
+      let (ty, op, s_e) = cmp_exp c e in
+      let wh = gensym "while" in
+      let stmtb = gensym "stm_block" in
+      let end_wh = gensym "end" in
+      let curr = gensym "curr" in
+      let (c1,s_b) = cmp_block c rt b in 
+      let wh_block = [T (Cbr (op, stmtb, end_wh))] in
+      let stmt_block = s_b >@ [T (Br (wh))] in
+      let end_lbl = [(L end_wh)] in
+      failwith "while not implemented"
 
       (* Adds each function identifer to the context at an
         appropriately translated type.  
@@ -550,7 +567,7 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   | CBool b -> (I1, GInt (if b then 1L else 0L)), []
   | CInt i -> (I64, GInt i), []
   | CStr s -> (Array (1 + String.length s, I8), GString s), []
-  | _ -> failwith "cmp_gexp not implemented"
+  | _ -> failwith "Gobal Array not implemented"
 
 (* Oat internals function context ------------------------------------------- *)
 let internals = [
