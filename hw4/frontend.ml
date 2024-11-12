@@ -343,6 +343,7 @@ let handle_bop (bop:Ast.binop) (rt:Ast.ty) (o1:operand) (o2:operand) : Ll.insn =
 
 
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
+  let (resty,resop,resstream) =
   match exp.elt with
   | CNull rty -> Ptr (cmp_rty rty), Null, []
   | CInt i -> I64, Const i, []
@@ -388,6 +389,12 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
                     | Bitnot -> t, Id temp, s >@ [I (temp, Binop (Xor, t, (Const Int64.max_int), o))]
                     end
   | _ -> failwith "cmp_exp not implemented"
+  in
+  match resop with
+              | Gid i -> let (_,oper) = Ctxt.lookup i c in 
+                        (resty, oper, resstream)
+              | _ -> (resty, resop, resstream)
+
 
 (* Compile a statement in context c with return typ rt. Return a new context, 
    possibly extended with new local bindings, and the instruction stream
@@ -431,7 +438,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
                     | Id id -> let (_,store_op) = Ctxt.lookup id c in
                                 begin match store_op with
                                 | Gid _ -> c,s >@ [I ("", Store (ty, op, Gid id))]
-                                | _ -> c,s >@ [I ("", Store (ty, op, Gid id))]
+                                | _ -> c,s >@ [I ("", Store (ty, op, Id id))]
                                 end
 
                     | _ -> failwith "Array not implemented"
