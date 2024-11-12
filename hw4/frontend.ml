@@ -428,7 +428,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
-  (*print_endline @@ string_of_ctxt c;*)
+  print_endline @@ string_of_ctxt c;
   match stmt.elt with 
   | Assn (p,e) -> let (ty,op1,s) = cmp_exp c e in 
                   let op = begin match op1 with
@@ -461,7 +461,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let _, f_stream = handle_call (cmp_exp c) f args "void_call" in 
     c, f_stream
   | If (e, b1, b2) ->  cmp_if c rt (e,b1,b2)
-  | While (e,b) -> failwith "while not implemented"
+  | While (e,b) -> cmp_while c rt (e,b)
   | _ -> failwith "cmp_stmt not fully implemented"
 
 (* Compile a series of statements *)
@@ -507,23 +507,23 @@ and cmp_while (c:Ctxt.t) (rt:Ll.ty) ((e, b):exp node * stmt node list): Ctxt.t *
       let end_wh = gensym "end" in
       let curr = gensym "curr" in
       let (c1,s_b) = cmp_block c rt b in 
-      let wh_block = [T (Cbr (op, stmtb, end_wh))] in
-      let stmt_block = s_b >@ [T (Br (wh))] in
+      let wh_block = [T (Br wh)] >@ [(L wh)] >@ s_e >@ [T (Cbr (op, stmtb, end_wh))] in
+      let stmt_block = [(L stmtb)] >@s_b >@ [T (Br (wh))] in
       let end_lbl = [(L end_wh)] in
-      failwith "while not implemented"
+      c1, wh_block >@ stmt_block >@ end_lbl
 
       (* Adds each function identifer to the context at an
         appropriately translated type.  
 
         NOTE: The Gid of a function is just its source name
       *)
-      let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
-          List.fold_left (fun c -> function
-            | Ast.Gfdecl { elt={ frtyp; fname; args } } ->
-              let ft = TRef (RFun (List.map fst args, frtyp)) in
-              Ctxt.add c fname (cmp_ty ft, Gid fname)
-            | _ -> c
-          ) c p 
+let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
+    List.fold_left (fun c -> function
+      | Ast.Gfdecl { elt={ frtyp; fname; args } } ->
+        let ft = TRef (RFun (List.map fst args, frtyp)) in
+        Ctxt.add c fname (cmp_ty ft, Gid fname)
+      | _ -> c
+    ) c p 
 
 (* Populate a context with bindings for global variables 
    mapping OAT identifiers to LLVMlite gids and their types.
@@ -538,15 +538,14 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
     | Gvdecl {elt; _} -> 
       let id = elt.name in 
       let ident = gensym id in
-      let rhs = begin match elt.init.elt with
-      | CNull rty ->  (cmp_rty rty, Null)
-      | CBool b -> (I1, Const (if b then 1L else 0L))
-      | CInt i -> (I64, Const i)
-      | CStr s -> (Ptr I8, Gid s)
+      let (ctxtglob,rhs) = begin match elt.init.elt with
+      | CNull rty ->  (Ctxt.add c id (cmp_rty rty, Gid ident)),(cmp_rty rty, Null)
+      | CBool b -> (Ctxt.add c id (I1, Gid ident)),(I1, Const (if b then 1L else 0L))
+      | CInt i -> (Ctxt.add c id (I64, Gid ident)),(I64, Const i)
+      | CStr s -> (Ctxt.add c id (Ptr I8, Gid ident)),(Ptr I8, Gid s)
       | _ -> failwith "Arrays Not implemented"
       end
       in
-      let ctxtglob = Ctxt.add c id (I64, Gid ident) in
       Ctxt.add ctxtglob ident rhs
     end
     in
