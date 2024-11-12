@@ -418,18 +418,32 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
-  print_endline @@ string_of_ctxt c;
+  (*print_endline @@ string_of_ctxt c;*)
   match stmt.elt with 
-  | Assn (p,e) -> let (ty,op,s) = cmp_exp c e in        
+  | Assn (p,e) -> let (ty,op1,s) = cmp_exp c e in 
+                  let op = begin match op1 with
+                            | Gid i -> let (typeret,ret) = Ctxt.lookup i c in
+                                        ret
+                            | _ -> op1
+                           end 
+                    in
                     begin match p.elt with
                     | Id id -> let (_,store_op) = Ctxt.lookup id c in
-                                c,s >@ [I ("", Store (ty, op, store_op))]
+                                begin match store_op with
+                                | Gid _ -> c,s >@ [I ("", Store (ty, op, Gid id))]
+                                | _ -> c,s >@ [I ("", Store (ty, op, Gid id))]
+                                end
+
                     | _ -> failwith "Array not implemented"
                     end
   | Ret e_opt -> begin 
       match e_opt with 
       | None -> c, [T (Ret (Void, None))]
-      | Some exp -> let ty, op, s = cmp_exp c exp in c, s >@ [(T (Ret (ty, Some op)))]
+      | Some exp -> let ty, op, s = cmp_exp c exp in 
+                      match op with
+                      | Gid i -> let (ty1,ret) =(Ctxt.lookup i c) in
+                             c, s >@ [(T (Ret (ty1, Some ret)))]
+                      | _ -> c, s >@ [(T (Ret (ty, Some op)))]
     end
   | Decl (id, exp) -> let ty, op, s = cmp_exp c exp in 
                       (Ctxt.add c id (ty, Id id)), s >@ [E (id, (Alloca ty)); I (id, Store (ty, op, Id id))]
@@ -510,6 +524,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
     | Gfdecl _ -> c
     | Gvdecl {elt; _} -> 
       let id = elt.name in 
+      let ident = gensym id in
       let rhs = begin match elt.init.elt with
       | CNull rty ->  (cmp_rty rty, Null)
       | CBool b -> (I1, Const (if b then 1L else 0L))
@@ -518,7 +533,8 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
       | _ -> failwith "Arrays Not implemented"
       end
       in
-      Ctxt.add c id rhs
+      let ctxtglob = Ctxt.add c id (I64, Gid ident) in
+      Ctxt.add ctxtglob ident rhs
     end
     in
   List.fold_left helper c p
