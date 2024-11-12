@@ -342,7 +342,7 @@ let handle_bop (bop:Ast.binop) (rt:Ast.ty) (o1:operand) (o2:operand) : Ll.insn =
     Icmp (cmp_condition bop, cmp_ty t1, o1, o2)
 
 let handle_call (cmp_exp:(exp node -> (Ll.ty * Ll.operand * stream))) (f:Ast.exp node) (args: Ast.exp node list) (op:id) : (Ll.ty * stream) = 
-  let f_ty, f_op, f_stream = (*print_endline @@ Astlib.string_of_exp fn_exp;*) cmp_exp f in
+  let f_ty, f_op, f_stream = cmp_exp f in
     begin match f_ty with
     | Ptr (Fun (_,fty)) -> 
       let compiled_args = List.map cmp_exp args in 
@@ -359,16 +359,27 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CInt i -> I64, Const i, []
   | CBool b -> I1, Const (if b then 1L else 0L), []
   | CStr s -> 
-    let id = gensym "str" in
+    let id = snd @@ Ctxt.lookup s c in
+    let gid = begin match id with 
+    | Gid i -> i
+    | _ -> failwith "Not a valid GID"
+    end in
     let ty = Array (String.length s + 1, I8) in
-    let op = Gid id in
-    ty, op, [G (id, (ty, GString s))]
+    let op = Gid s in
+    Ptr ty, op, [G (gid, (ty, GString s))]
   | Id i -> 
     let ty, op = Ctxt.lookup i c in
     begin match op with
     | Id _ -> 
       let id = gensym i in
       ty, Id id, [I (id, Load (Ptr ty, op))]
+    | Gid _ ->
+      begin match ty with
+      | Ptr (Fun _) -> ty, op, []
+      | _ ->
+        let id = gensym i in
+        ty, Id id, [I (id, Load (Ptr ty, op))]
+      end
     | _ -> ty, op, []
     end
   | Call (fn_exp, args) -> 
@@ -428,7 +439,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
-  print_endline @@ string_of_ctxt c;
+  (*print_endline @@ string_of_ctxt c;*)
   match stmt.elt with 
   | Assn (p,e) -> let (ty,op1,s) = cmp_exp c e in 
                   let op = begin match op1 with
@@ -441,7 +452,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
                     | Id id -> let (_,store_op) = Ctxt.lookup id c in
                                 begin match store_op with
                                 | Gid _ -> c,s >@ [I ("", Store (ty, op, Gid id))]
-                                | _ -> c,s >@ [I ("", Store (ty, op, Id id))]
+                                | _ -> c,s >@ [I ("", Store (ty, op, store_op))]
                                 end
 
                     | _ -> failwith "Array not implemented"
@@ -539,14 +550,14 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
       let id = elt.name in 
       let ident = gensym id in
       let (ctxtglob,rhs) = begin match elt.init.elt with
-      | CNull rty ->  (Ctxt.add c id (cmp_rty rty, Gid ident)),(cmp_rty rty, Null)
-      | CBool b -> (Ctxt.add c id (I1, Gid ident)),(I1, Const (if b then 1L else 0L))
-      | CInt i -> (Ctxt.add c id (I64, Gid ident)),(I64, Const i)
-      | CStr s -> (Ctxt.add c id (Ptr I8, Gid ident)),(Ptr I8, Gid s)
+      | CNull rty ->  (Ctxt.add c id (cmp_rty rty, Gid id)),(cmp_rty rty, Null)
+      | CBool b -> (Ctxt.add c id (I1, Gid id)),(I1, Const (if b then 1L else 0L))
+      | CInt i -> (Ctxt.add c id (I64, Gid id)),(I64, Const i)
+      | CStr s -> (Ctxt.add c id (Ptr I8, Gid id)),(Ptr I8, Gid s)
       | _ -> failwith "Arrays Not implemented"
       end
       in
-      Ctxt.add ctxtglob ident rhs
+      ctxtglob
     end
     in
   List.fold_left helper c p
@@ -563,18 +574,35 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    5. Use cfg_of_stream to produce a LLVMlite cfg from 
  *)
 
+ let rec find_strings_exp (e:exp node) : (string list) = 
+  match e.elt with
+  | CNull _ | CBool _ | CInt _ -> []
+  | CStr s -> [s]
+  | CArr (_, els) -> List.map find_strings_exp els |> List.flatten
+  | NewArr (_, exp) -> find_strings_exp exp
+  | Call (_, args) -> List.map find_strings_exp args |> List.flatten
+  | _ -> []
+
+let find_strings (statement:stmt node) : (string list) = 
+  match statement.elt with 
+  | Assn (_, e) | Decl (_, e) | Ret (Some e) -> find_strings_exp e
+  | SCall (_, args)-> List.map find_strings_exp args |> List.flatten
+  | _ -> []
+
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
   let fn = f.elt in
   let compiled_args = List.map (fun (ty, id) -> (id, (cmp_ty ty, gensym id))) fn.args in
   let new_ctxt = List.fold_left (fun ctxt -> fun (oat_id, (ty, llvm_id)) -> Ctxt.add ctxt oat_id (ty, Id llvm_id)) c compiled_args in
   let allocas = List.map (fun (id, (ty, operand)) -> [E (operand, Store (ty, Id id, Id operand)); E (operand, Alloca ty)]) compiled_args |> List.flatten in
-  let block_ctxt, block_stream = cmp_block new_ctxt (cmp_ret_ty fn.frtyp) fn.body in
+  let newer_ctxt = List.map find_strings fn.body |> List.flatten |> List.fold_left (fun ctxt -> fun s -> Ctxt.add ctxt s (Ptr I8, Gid (gensym "str"))) new_ctxt in
+  let block_ctxt, block_stream = cmp_block newer_ctxt (cmp_ret_ty fn.frtyp) fn.body in
   let cfg, _ = cfg_of_stream (block_stream >@ allocas) in
+  (*List.iter (fun elt -> match elt with | G (gid, gdecl) -> print_endline @@ Printf.sprintf "%s: %s" gid (string_of_gdecl gdecl) | _ -> ()) block_stream;*)
   {
     f_ty = List.map (fun (ty, _) -> cmp_ty ty) fn.args, cmp_ret_ty fn.frtyp; 
     f_param = List.map snd f.elt.args; 
     f_cfg = cfg
-  }, []
+  }, List.filter_map (fun elt -> match elt with | G (gid, gdecl) -> Some (gid, gdecl) | _ -> None) block_stream
   (*failwith "cmp_fdecl not implemented"*)
 
 (* Compile a global initializer, returning the resulting LLVMlite global
