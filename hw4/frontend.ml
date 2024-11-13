@@ -366,7 +366,11 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     end in
     let ty = Array (String.length s + 1, I8) in
     let op = Gid s in
-    Ptr ty, op, [G (gid, (ty, GString s))]
+    let tempstr = gensym "tempstr" in
+    let convert = gensym "bcaststr" in
+    let idstr = gensym "s" in
+    let bitcaststr = [G (convert, (Ptr I8,(GBitcast (Ptr ty, GGid tempstr, Ptr I8))))] in
+    (Ptr I8), Id idstr, [G (tempstr, (ty, GString s))] >@ bitcaststr >@ [I (idstr,Load (Ptr (Ptr I8) ,Gid convert))]
   | Id i -> 
     let ty, op = Ctxt.lookup i c in
     begin match op with
@@ -648,7 +652,8 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   | CNull rty -> (cmp_rty rty, GNull), []
   | CBool b -> (I1, GInt (if b then 1L else 0L)), []
   | CInt i -> (I64, GInt i), []
-  | CStr s -> (Array (1 + String.length s, I8), GString s), []
+  | CStr s -> let gl_string = gensym "gstr" in
+                ((Ptr I8), GBitcast (Ptr (Array (1 + String.length s, I8)),GGid gl_string, Ptr I8)), [(gl_string,((Array (1 + String.length s, I8), GString s)))]
   | CArr (arrty, arr_exp) -> failwith "Gobal Array not implemented"
   | _ -> failwith "Not valid gexp"
 
