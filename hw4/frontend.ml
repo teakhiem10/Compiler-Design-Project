@@ -467,12 +467,13 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
                       | _ -> c, s >@ [(T (Ret (ty, Some op)))]
     end
   | Decl (id, exp) -> let ty, op, s = cmp_exp c exp in 
-                      (Ctxt.add c id (ty, Id id)), s >@ [E (id, (Alloca ty)); I (id, Store (ty, op, Id id))]
+                      (Ctxt.add c id (ty, Id id)), s >@ [I (id, Store (ty, op, Id id));E (id, (Alloca ty));]
   | SCall (f, args) -> 
     let _, f_stream = handle_call (cmp_exp c) f args "void_call" in 
     c, f_stream
   | If (e, b1, b2) ->  cmp_if c rt (e,b1,b2)
   | While (e,b) -> cmp_while c rt (e,b)
+  | For (v, e, cond, b) -> cmp_for c rt (v, e, cond, b)
   | _ -> failwith "cmp_stmt not fully implemented"
 
 (* Compile a series of statements *)
@@ -495,20 +496,17 @@ and cmp_if (c:Ctxt.t) (rt:Ll.ty)  ((e, b1, b2):exp node * stmt node list * stmt 
       let end_lbl = [(L end_if)] in
       let s1_term = List.hd (List.rev s1) in
       let end_stream:stream = begin match s2 with
-                                | [] -> begin match s1_term with
-                                        | T(Ret (Void, None)) -> [T (Ret (Void, None))]
-                                        | T (Ret (s1ty, Some s1op)) -> [T (Ret (s1ty, Some s1op))]
-                                        | _ -> []
-                                        end
+                                | [] -> []
                                 | _ -> let s2_term = List.hd (List.rev s2) in
-                                      match (s1_term, s2_term) with
-                                      | (T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
-                                      | (T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
-                                      | _ -> []
+                                       begin match (s1_term, s2_term) with
+                                          | (T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
+                                          | (T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
+                                          | _ -> []
+                                        end
                                 end
       in
       if s2 = [] then
-        c2, s_e >@ [T (Cbr (op, ifs, end_if))] >@ if_block >@ end_lbl >@ end_stream
+        c2, s_e >@ [T (Cbr (op, ifs, end_if))] >@ if_block >@ end_lbl
       else
         c2, s_e >@ [T (Cbr (op, ifs, el))] >@ if_block >@ else_block >@ end_lbl >@ end_stream
 and cmp_while (c:Ctxt.t) (rt:Ll.ty) ((e, b):exp node * stmt node list): Ctxt.t * stream = 
@@ -522,6 +520,35 @@ and cmp_while (c:Ctxt.t) (rt:Ll.ty) ((e, b):exp node * stmt node list): Ctxt.t *
       let stmt_block = [(L stmtb)] >@s_b >@ [T (Br (wh))] in
       let end_lbl = [(L end_wh)] in
       c1, wh_block >@ stmt_block >@ end_lbl
+      
+and cmp_for (c:Ctxt.t) (rt:Ll.ty) ((vlist, e, st_change, b): vdecl list * exp node option * stmt node option * stmt node list): Ctxt.t * stream = 
+  let for_entry_lbl = gensym "forentry" in
+  let helper ((helpc, st): Ctxt.t * stream ) ((idh,exh): vdecl) : Ctxt.t * stream =
+    let (help_exp_ty, help_exp_op, helps) = cmp_exp c exh in
+    let helpstream = [I (idh,Alloca help_exp_ty)] >@ [I ("", Store (help_exp_ty, help_exp_op, Id idh))] in
+    (Ctxt.add helpc idh (help_exp_ty,Id idh)), st >@ helps >@ helpstream
+  in
+  let (forctxt, vdecl_stream) = List.fold_left helper (c,[]) vlist in
+  let for_entry_stream = [T (Br for_entry_lbl)] >@ [L for_entry_lbl] >@ vdecl_stream in
+  (*let for_exp_stream = let exp_term = begin match e with
+                        | None -> [T (Br for_block_lbl)]
+                        | Some a -> let (ty_exp,op_exp, s_exp) = cmp_exp forctxt a in
+                          s_exp >@ [T (Cbr (op_exp,for_block_lbl, for_end_lbl))]
+                      end 
+                    in [L for_exp_lbl] >@ exp_term
+  let for_block_stream
+                        
+  in*)
+  let stmt_avail = match st_change with
+  | None -> []
+  | Some a -> [a] in
+  let (_,for_blocks_stream) = begin match e with
+                                              | None -> cmp_while forctxt rt ({elt = (CBool true); loc = ("",(0,0),(0,0)) }, b @ stmt_avail)
+                                              | Some a ->  cmp_while forctxt rt (a, b @ stmt_avail)
+                                              end 
+      in 
+  (*print_endline @@ string_of_ctxt forctxt;*)
+  c, for_entry_stream >@ for_blocks_stream
 
       (* Adds each function identifer to the context at an
         appropriately translated type.  
@@ -548,7 +575,6 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
     | Gfdecl _ -> c
     | Gvdecl {elt; _} -> 
       let id = elt.name in 
-      let ident = gensym id in
       let (ctxtglob,rhs) = begin match elt.init.elt with
       | CNull rty ->  (Ctxt.add c id (cmp_rty rty, Gid id)),(cmp_rty rty, Null)
       | CBool b -> (Ctxt.add c id (I1, Gid id)),(I1, Const (if b then 1L else 0L))
@@ -623,7 +649,8 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   | CBool b -> (I1, GInt (if b then 1L else 0L)), []
   | CInt i -> (I64, GInt i), []
   | CStr s -> (Array (1 + String.length s, I8), GString s), []
-  | _ -> failwith "Gobal Array not implemented"
+  | CArr (arrty, arr_exp) -> failwith "Gobal Array not implemented"
+  | _ -> failwith "Not valid gexp"
 
 (* Oat internals function context ------------------------------------------- *)
 let internals = [
