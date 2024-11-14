@@ -665,6 +665,7 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   match e.elt with 
   | CNull rty -> begin match rty with 
     | RArray ty -> (Ptr (Struct [I64; Array (0, cmp_ty ty)]), GNull), []
+    | RString -> (Ptr I8, GNull), []
     | _ -> (cmp_rty rty, GNull), []
     end
   | CBool b -> (I1, GInt (if b then 1L else 0L)), []
