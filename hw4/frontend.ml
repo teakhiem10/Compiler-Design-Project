@@ -365,7 +365,13 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let idstr = gensym "s" in
     let bitcaststr = [G (convert, (Ptr I8,(GBitcast (Ptr ty, GGid tempstr, Ptr I8))))] in
     (Ptr I8), Id idstr, [G (tempstr, (ty, GString s))] >@ bitcaststr >@ [I (idstr,Load (Ptr (Ptr I8) ,Gid convert))]
-  | CArr (ty, elm_exps) -> failwith "CArr not implemented"
+  | CArr (ty, elm_exps) -> let gl_arr = gensym "garr" in
+                            let arr_ty = Struct [I64; Array (0, cmp_ty ty)] in
+                            let arr_ty_num = Struct [I64; Array (List.length arr_exp, cmp_ty ty)] in
+                            let compiled_exps = List.map (cmp_gexp c) arr_exp in
+                            let arg_decls = List.map fst compiled_exps in
+                            let additional_decls = List.map snd compiled_exps |> List.flatten in
+                            failwith "CArr not implemented"
   | NewArr (ty, length_exp) -> 
     let id = gensym "arr" in
     let tmp_arr = gensym "tmparr" in
