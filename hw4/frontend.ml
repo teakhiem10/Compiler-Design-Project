@@ -520,13 +520,13 @@ and cmp_if (c:Ctxt.t) (rt:Ll.ty)  ((e, b1, b2):exp node * stmt node list * stmt 
       let if_block = [(L ifs)] >@ s1 >@ end_if_stream in
       let else_block = [(L el)] >@ s2 >@ end_if_stream in
       let end_lbl = [(L end_if)] in
-      let s1_term = List.hd s1 in
+      let s1_term = match s1 with | [] -> None | l -> Some (List.hd s1) in
       let end_stream:stream = begin match s2 with
                                 | [] -> []
                                 | _ -> let s2_term = List.hd s2 in
                                        begin match (s1_term, s2_term) with
-                                          | (T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
-                                          | (T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
+                                          |  (Some T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
+                                          | (Some T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
                                           | _ -> []
                                         end
                                 end
