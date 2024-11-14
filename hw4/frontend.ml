@@ -640,7 +640,7 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
   let allocas = List.map (fun (id, (ty, operand)) -> [E (operand, Store (ty, Id id, Id operand)); E (operand, Alloca ty)]) compiled_args |> List.flatten in
   let newer_ctxt = List.map find_strings fn.body |> List.flatten |> List.fold_left (fun ctxt -> fun s -> Ctxt.add ctxt s (Ptr I8, Gid (gensym "str"))) new_ctxt in
   let block_ctxt, block_stream = cmp_block newer_ctxt (cmp_ret_ty fn.frtyp) fn.body in
-  let cfg, _ = cfg_of_stream (block_stream >@ allocas) in
+  let cfg, _ = cfg_of_stream (block_stream >@ allocas >:: T (Ret (Void, None))) in
   (*List.iter (fun elt -> match elt with | G (gid, gdecl) -> print_endline @@ Printf.sprintf "%s: %s" gid (string_of_gdecl gdecl) | _ -> ()) block_stream;*)
   {
     f_ty = List.map (fun (ty, _) -> cmp_ty ty) fn.args, cmp_ret_ty fn.frtyp; 
