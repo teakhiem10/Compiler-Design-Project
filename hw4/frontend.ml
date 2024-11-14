@@ -387,7 +387,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         I (id, Load (Ptr ty, Id index_id));
         I (index_id, Gep (Ptr (Struct [I64; Array (0, ty)]), arr_op, [Const 0L; Const 1L; index_op]))
       ])
-    | _ -> failwith "not a valid array type for indexing"
+    | _ -> print_endline @@ string_of_ctxt c; failwith (Printf.sprintf "not a valid array type for indexing: %s, %s" (string_of_ty arr_ty) (Astlib.string_of_exp arr_exp))
     end
   | Id i -> 
     let ty, op = Ctxt.lookup i c in
@@ -592,16 +592,19 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
     | Gfdecl _ -> c
     | Gvdecl {elt; _} -> 
       let id = elt.name in 
-      let (ctxtglob,rhs) = begin match elt.init.elt with
-      | CNull rty ->  (Ctxt.add c id (cmp_rty rty, Gid id)),(cmp_rty rty, Null)
-      | CBool b -> (Ctxt.add c id (I1, Gid id)),(I1, Const (if b then 1L else 0L))
-      | CInt i -> (Ctxt.add c id (I64, Gid id)),(I64, Const i)
-      | CStr s -> (Ctxt.add c id (Ptr I8, Gid id)),(Ptr I8, Gid s)
-      | CArr (ty, _) -> (Ctxt.add c id (Ptr (Struct [I64; Array (0, cmp_ty ty)]), Gid id)),(Ptr (Struct [I64; Array (0, cmp_ty ty)]), Gid id)
+      let rhs = begin match elt.init.elt with
+      | CNull rty -> 
+        begin match rty with 
+        | RArray _ -> Ptr (cmp_rty rty), Gid id
+        | _ -> cmp_rty rty, Gid id
+        end
+      | CBool _ -> I1, Gid id
+      | CInt _ -> I64, Gid id
+      | CStr _ -> Ptr I8, Gid id
+      | CArr (ty, _) -> Ptr (Struct [I64; Array (0, cmp_ty ty)]), Gid id
       | _ -> failwith @@ Astlib.string_of_exp elt.init
-      end
-      in
-      ctxtglob
+      end in
+      Ctxt.add c id rhs
     end
     in
   List.fold_left helper c p
