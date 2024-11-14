@@ -380,7 +380,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let len_ty, len_op, len_strm = cmp_exp c length_exp in
     (Ptr (arr_ty), Id tmp_arr, len_strm >@ [
       I (tmp_arr, Bitcast (Ptr I64, Id raw_arr, Ptr arr_ty)); 
-      I (raw_arr, Call (Ptr (cmp_ty ty), Gid "oat_alloc_array", [len_ty, len_op]))
+      I (raw_arr, Call (Ptr (I64), Gid "oat_alloc_array", [len_ty, len_op]))
     ])
   | Index (arr_exp, index_exp) -> 
     let index_id = gensym "index" in
@@ -393,7 +393,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         I (id, Load (Ptr ty, Id index_id));
         I (index_id, Gep (Ptr (Struct [I64; Array (0, ty)]), arr_op, [Const 0L; Const 1L; index_op]))
       ])
-    | _ -> failwith "not a valid array type for indexing"
+    | _ -> print_endline @@ string_of_ctxt c; failwith (Printf.sprintf "not a valid array type for indexing: %s, %s" (string_of_ty arr_ty) (Astlib.string_of_exp arr_exp))
     end
   | Id i -> 
     let ty, op = Ctxt.lookup i c in
@@ -526,13 +526,13 @@ and cmp_if (c:Ctxt.t) (rt:Ll.ty)  ((e, b1, b2):exp node * stmt node list * stmt 
       let if_block = [(L ifs)] >@ s1 >@ end_if_stream in
       let else_block = [(L el)] >@ s2 >@ end_if_stream in
       let end_lbl = [(L end_if)] in
-      let s1_term = List.hd s1 in
+      let s1_term = match s1 with | [] -> None | l -> Some (List.hd s1) in
       let end_stream:stream = begin match s2 with
                                 | [] -> []
                                 | _ -> let s2_term = List.hd s2 in
                                        begin match (s1_term, s2_term) with
-                                          | (T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
-                                          | (T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
+                                          |  (Some T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
+                                          | (Some T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
                                           | _ -> []
                                         end
                                 end
@@ -598,16 +598,19 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
     | Gfdecl _ -> c
     | Gvdecl {elt; _} -> 
       let id = elt.name in 
-      let (ctxtglob,rhs) = begin match elt.init.elt with
-      | CNull rty ->  (Ctxt.add c id (cmp_rty rty, Gid id)),(cmp_rty rty, Null)
-      | CBool b -> (Ctxt.add c id (I1, Gid id)),(I1, Const (if b then 1L else 0L))
-      | CInt i -> (Ctxt.add c id (I64, Gid id)),(I64, Const i)
-      | CStr s -> (Ctxt.add c id (Ptr I8, Gid id)),(Ptr I8, Gid s)
-      | CArr (ty, _) -> (Ctxt.add c id (Ptr (Struct [I64; Array (0, cmp_ty ty)]), Gid id)),(Ptr (Struct [I64; Array (0, cmp_ty ty)]), Gid id)
+      let rhs = begin match elt.init.elt with
+      | CNull rty -> 
+        begin match rty with 
+        | RArray _ -> Ptr (cmp_rty rty), Gid id
+        | _ -> cmp_rty rty, Gid id
+        end
+      | CBool _ -> I1, Gid id
+      | CInt _ -> I64, Gid id
+      | CStr _ -> Ptr I8, Gid id
+      | CArr (ty, _) -> Ptr (Struct [I64; Array (0, cmp_ty ty)]), Gid id
       | _ -> failwith @@ Astlib.string_of_exp elt.init
-      end
-      in
-      ctxtglob
+      end in
+      Ctxt.add c id rhs
     end
     in
   List.fold_left helper c p
@@ -646,7 +649,7 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
   let allocas = List.map (fun (id, (ty, operand)) -> [E (operand, Store (ty, Id id, Id operand)); E (operand, Alloca ty)]) compiled_args |> List.flatten in
   let newer_ctxt = List.map find_strings fn.body |> List.flatten |> List.fold_left (fun ctxt -> fun s -> Ctxt.add ctxt s (Ptr I8, Gid (gensym "str"))) new_ctxt in
   let block_ctxt, block_stream = cmp_block newer_ctxt (cmp_ret_ty fn.frtyp) fn.body in
-  let cfg, _ = cfg_of_stream (block_stream >@ allocas) in
+  let cfg, _ = cfg_of_stream (block_stream >@ allocas >:: T (Ret (Void, None))) in
   (*List.iter (fun elt -> match elt with | G (gid, gdecl) -> print_endline @@ Printf.sprintf "%s: %s" gid (string_of_gdecl gdecl) | _ -> ()) block_stream;*)
   {
     f_ty = List.map (fun (ty, _) -> cmp_ty ty) fn.args, cmp_ret_ty fn.frtyp; 
@@ -671,6 +674,7 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   match e.elt with 
   | CNull rty -> begin match rty with 
     | RArray ty -> (Ptr (Struct [I64; Array (0, cmp_ty ty)]), GNull), []
+    | RString -> (Ptr I8, GNull), []
     | _ -> (cmp_rty rty, GNull), []
     end
   | CBool b -> (I1, GInt (if b then 1L else 0L)), []
