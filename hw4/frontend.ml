@@ -359,13 +359,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CInt i -> I64, Const i, []
   | CBool b -> I1, Const (if b then 1L else 0L), []
   | CStr s -> 
-   (* let id = snd @@ Ctxt.lookup s c in
-    let gid = begin match id with 
-    | Gid i -> i
-    | _ -> failwith "Not a valid GID"
-    end in*)
     let ty = Array (String.length s + 1, I8) in
-    (*let op = Gid s in*)
     let tempstr = gensym "tempstr" in
     let convert = gensym "bcaststr" in
     let idstr = gensym "s" in
@@ -555,9 +549,10 @@ and cmp_while (c:Ctxt.t) (rt:Ll.ty) ((e, b):exp node * stmt node list): Ctxt.t *
 and cmp_for (c:Ctxt.t) (rt:Ll.ty) ((vlist, e, st_change, b): vdecl list * exp node option * stmt node option * stmt node list): Ctxt.t * stream = 
   let for_entry_lbl = gensym "forentry" in
   let helper ((helpc, st): Ctxt.t * stream ) ((idh,exh): vdecl) : Ctxt.t * stream =
+    let idh_lbl = gensym idh in
     let (help_exp_ty, help_exp_op, helps) = cmp_exp c exh in
-    let helpstream = [I (idh,Alloca help_exp_ty)] >@ [I ("", Store (help_exp_ty, help_exp_op, Id idh))] in
-    (Ctxt.add helpc idh (help_exp_ty,Id idh)), st >@ helps >@ helpstream
+    let helpstream = [I (idh_lbl,Alloca help_exp_ty)] >@ [I ("", Store (help_exp_ty, help_exp_op, Id idh_lbl))] in
+    (Ctxt.add helpc idh (help_exp_ty,Id idh_lbl)), st >@ helps >@ helpstream
   in
   let (forctxt, vdecl_stream) = List.fold_left helper (c,[]) vlist in
   let for_entry_stream = [T (Br for_entry_lbl)] >@ [L for_entry_lbl] >@ vdecl_stream in
