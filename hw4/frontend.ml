@@ -371,6 +371,30 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let idstr = gensym "s" in
     let bitcaststr = [G (convert, (Ptr I8,(GBitcast (Ptr ty, GGid tempstr, Ptr I8))))] in
     (Ptr I8), Id idstr, [G (tempstr, (ty, GString s))] >@ bitcaststr >@ [I (idstr,Load (Ptr (Ptr I8) ,Gid convert))]
+  | NewArr (ty, length_exp) -> 
+    let id = gensym "arr" in
+    let tmp_arr = gensym "tmparr" in
+    let raw_arr = gensym "rawarr" in
+    let arr_ty = Struct [I64; Array (0, cmp_ty ty)] in
+    let len_ty, len_op, len_strm = cmp_exp c length_exp in
+    (Ptr (arr_ty), Id tmp_arr, len_strm >@ [
+      (*I (gensym "store", Store (Ptr arr_ty, Id tmp_arr, Id id));*)
+      I (tmp_arr, Bitcast (Ptr I64, Id raw_arr, Ptr arr_ty)); 
+      I (raw_arr, Call (Ptr (cmp_ty ty), Gid "oat_alloc_array", [len_ty, len_op]))
+    ])
+  | Index (arr_exp, index_exp) -> 
+    let index_id = gensym "index" in
+    let id = gensym "arr_val" in
+    let arr_ty, arr_op, arr_strm = cmp_exp c arr_exp in
+    let index_ty, index_op, index_strm = cmp_exp c index_exp in
+    begin match arr_ty with
+    | Ptr (Struct [I64; Array (0, ty)]) -> 
+      (ty, Id id, arr_strm >@ index_strm >@ [
+        I (id, Load (Ptr ty, Id index_id));
+        I (index_id, Gep (Ptr (Struct [I64; Array (0, ty)]), arr_op, [Const 0L; Const 1L; index_op]))
+      ])
+    | _ -> failwith "not a valid array type for indexing"
+    end
   | Id i -> 
     let ty, op = Ctxt.lookup i c in
     begin match op with
@@ -458,8 +482,12 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
                                 | Gid _ -> c,s >@ [I ("", Store (ty, op, Gid id))]
                                 | _ -> c,s >@ [I ("", Store (ty, op, store_op))]
                                 end
-
-                    | _ -> failwith "Array not implemented"
+                    | Index (arr, index) -> 
+                      let arr_ty, arr_op, arr_strm = cmp_exp c arr in
+                      let index_ty, index_op, index_strm = cmp_exp c index in
+                      let arr_index = gensym "arr_index" in
+                      c, s >@ arr_strm >@ index_strm >@ [I ("", Store (ty, op, Id arr_index)); I (arr_index, Gep (arr_ty, arr_op, [Const 0L; Const 1L; index_op]))]
+                    | _ -> failwith ("not a valid lhs to assignment: " ^ (Astlib.string_of_exp p))
                     end
   | Ret e_opt -> begin 
       match e_opt with 
@@ -574,7 +602,8 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
       | CBool b -> (Ctxt.add c id (I1, Gid id)),(I1, Const (if b then 1L else 0L))
       | CInt i -> (Ctxt.add c id (I64, Gid id)),(I64, Const i)
       | CStr s -> (Ctxt.add c id (Ptr I8, Gid id)),(Ptr I8, Gid s)
-      | _ -> failwith "Arrays Not implemented"
+      | CArr (ty, _) -> (Ctxt.add c id (Ptr (Struct [I64; Array (0, cmp_ty ty)]), Gid id)),(Ptr (Struct [I64; Array (0, cmp_ty ty)]), Gid id)
+      | _ -> failwith @@ Astlib.string_of_exp elt.init
       end
       in
       ctxtglob
@@ -639,13 +668,24 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
 
 let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   match e.elt with 
-  | CNull rty -> (cmp_rty rty, GNull), []
+  | CNull rty -> begin match rty with 
+    | RArray ty -> (Ptr (Struct [I64; Array (0, cmp_ty ty)]), GNull), []
+    | _ -> (cmp_rty rty, GNull), []
+    end
   | CBool b -> (I1, GInt (if b then 1L else 0L)), []
   | CInt i -> (I64, GInt i), []
   | CStr s -> let gl_string = gensym "gstr" in
               let type_str = Array (String.length s + 1, I8) in
                 ((Ptr I8), GBitcast (Ptr type_str,GGid gl_string, Ptr I8)), [(gl_string,((type_str, GString s)))]
-  | CArr (arrty, arr_exp) -> failwith "Gobal Array not implemented"
+  | CArr (ty, arr_exp) -> 
+      let gl_arr = gensym "garr" in
+      let arr_ty = Struct [I64; Array (0, cmp_ty ty)] in
+      let arr_ty_num = Struct [I64; Array (List.length arr_exp, cmp_ty ty)] in
+      let compiled_exps = List.map (cmp_gexp c) arr_exp in
+      let arg_decls = List.map fst compiled_exps in
+      let additional_decls = List.map snd compiled_exps |> List.flatten in
+      (Ptr arr_ty, GBitcast (Ptr arr_ty_num, GGid gl_arr, Ptr arr_ty)), 
+      [(gl_arr, (arr_ty_num, GStruct [I64, GInt (Int64.of_int @@ List.length arr_exp); Array (List.length arr_exp, cmp_ty ty), GArray (arg_decls)]))] >@ additional_decls
   | _ -> failwith "Not valid gexp"
 
 (* Oat internals function context ------------------------------------------- *)
