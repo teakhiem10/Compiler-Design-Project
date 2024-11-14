@@ -533,15 +533,6 @@ and cmp_for (c:Ctxt.t) (rt:Ll.ty) ((vlist, e, st_change, b): vdecl list * exp no
   in
   let (forctxt, vdecl_stream) = List.fold_left helper (c,[]) vlist in
   let for_entry_stream = [T (Br for_entry_lbl)] >@ [L for_entry_lbl] >@ vdecl_stream in
-  (*let for_exp_stream = let exp_term = begin match e with
-                        | None -> [T (Br for_block_lbl)]
-                        | Some a -> let (ty_exp,op_exp, s_exp) = cmp_exp forctxt a in
-                          s_exp >@ [T (Cbr (op_exp,for_block_lbl, for_end_lbl))]
-                      end 
-                    in [L for_exp_lbl] >@ exp_term
-  let for_block_stream
-                        
-  in*)
   let stmt_avail = match st_change with
   | None -> []
   | Some a -> [a] in
@@ -652,7 +643,8 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   | CBool b -> (I1, GInt (if b then 1L else 0L)), []
   | CInt i -> (I64, GInt i), []
   | CStr s -> let gl_string = gensym "gstr" in
-                ((Ptr I8), GBitcast (Ptr (Array (1 + String.length s, I8)),GGid gl_string, Ptr I8)), [(gl_string,((Array (1 + String.length s, I8), GString s)))]
+              let type_str = Array (String.length s + 1, I8) in
+                ((Ptr I8), GBitcast (Ptr type_str,GGid gl_string, Ptr I8)), [(gl_string,((type_str, GString s)))]
   | CArr (arrty, arr_exp) -> failwith "Gobal Array not implemented"
   | _ -> failwith "Not valid gexp"
 
