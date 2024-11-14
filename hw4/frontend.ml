@@ -374,7 +374,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let len_ty, len_op, len_strm = cmp_exp c length_exp in
     (Ptr (arr_ty), Id tmp_arr, len_strm >@ [
       I (tmp_arr, Bitcast (Ptr I64, Id raw_arr, Ptr arr_ty)); 
-      I (raw_arr, Call (Ptr (cmp_ty ty), Gid "oat_alloc_array", [len_ty, len_op]))
+      I (raw_arr, Call (Ptr (I64), Gid "oat_alloc_array", [len_ty, len_op]))
     ])
   | Index (arr_exp, index_exp) -> 
     let index_id = gensym "index" in
