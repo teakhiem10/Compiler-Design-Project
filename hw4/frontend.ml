@@ -371,6 +371,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let idstr = gensym "s" in
     let bitcaststr = [G (convert, (Ptr I8,(GBitcast (Ptr ty, GGid tempstr, Ptr I8))))] in
     (Ptr I8), Id idstr, [G (tempstr, (ty, GString s))] >@ bitcaststr >@ [I (idstr,Load (Ptr (Ptr I8) ,Gid convert))]
+  | CArr (ty, elm_exps) -> failwith "CArr not implemented"
   | NewArr (ty, length_exp) -> 
     let id = gensym "arr" in
     let tmp_arr = gensym "tmparr" in
@@ -378,7 +379,6 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let arr_ty = Struct [I64; Array (0, cmp_ty ty)] in
     let len_ty, len_op, len_strm = cmp_exp c length_exp in
     (Ptr (arr_ty), Id tmp_arr, len_strm >@ [
-      (*I (gensym "store", Store (Ptr arr_ty, Id tmp_arr, Id id));*)
       I (tmp_arr, Bitcast (Ptr I64, Id raw_arr, Ptr arr_ty)); 
       I (raw_arr, Call (Ptr (cmp_ty ty), Gid "oat_alloc_array", [len_ty, len_op]))
     ])
