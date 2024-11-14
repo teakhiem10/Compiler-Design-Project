@@ -359,13 +359,13 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CInt i -> I64, Const i, []
   | CBool b -> I1, Const (if b then 1L else 0L), []
   | CStr s -> 
-    let id = snd @@ Ctxt.lookup s c in
+   (* let id = snd @@ Ctxt.lookup s c in
     let gid = begin match id with 
     | Gid i -> i
     | _ -> failwith "Not a valid GID"
-    end in
+    end in*)
     let ty = Array (String.length s + 1, I8) in
-    let op = Gid s in
+    (*let op = Gid s in*)
     let tempstr = gensym "tempstr" in
     let convert = gensym "bcaststr" in
     let idstr = gensym "s" in
@@ -391,7 +391,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let f_ty, f_stream = handle_call (cmp_exp c) fn_exp args op in
     f_ty, Id op, f_stream
   | Bop (bop, e1, e2) -> 
-    let t1, t2, rt = typ_of_binop bop in
+    let _, _, rt = typ_of_binop bop in
     let _, o1, s1 = cmp_exp c e1 in
     let _, o2, s2 = cmp_exp c e2 in
     let op = gensym "x" in
@@ -473,12 +473,12 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   | Decl (id, exp) -> let ty, op, s = cmp_exp c exp in 
                       (Ctxt.add c id (ty, Id id)), s >@ [I (id, Store (ty, op, Id id));E (id, (Alloca ty));]
   | SCall (f, args) -> 
-    let _, f_stream = handle_call (cmp_exp c) f args "void_call" in 
+    let v_call = gensym "void_call" in
+    let _, f_stream = handle_call (cmp_exp c) f args v_call in 
     c, f_stream
   | If (e, b1, b2) ->  cmp_if c rt (e,b1,b2)
   | While (e,b) -> cmp_while c rt (e,b)
   | For (v, e, cond, b) -> cmp_for c rt (v, e, cond, b)
-  | _ -> failwith "cmp_stmt not fully implemented"
 
 (* Compile a series of statements *)
 and cmp_block (c:Ctxt.t) (rt:Ll.ty) (stmts:Ast.block) : Ctxt.t * stream =
@@ -498,10 +498,10 @@ and cmp_if (c:Ctxt.t) (rt:Ll.ty)  ((e, b1, b2):exp node * stmt node list * stmt 
       let if_block = [(L ifs)] >@ s1 >@ end_if_stream in
       let else_block = [(L el)] >@ s2 >@ end_if_stream in
       let end_lbl = [(L end_if)] in
-      let s1_term = List.hd (List.rev s1) in
+      let s1_term = List.hd s1 in
       let end_stream:stream = begin match s2 with
                                 | [] -> []
-                                | _ -> let s2_term = List.hd (List.rev s2) in
+                                | _ -> let s2_term = List.hd s2 in
                                        begin match (s1_term, s2_term) with
                                           | (T(Ret (Void, None)), T(Ret (Void, None))) -> [(T (Ret (Void, None)))]
                                           | (T (Ret (s1ty, Some s1op) ), T(Ret (_, Some _))) -> [(T (Ret (s1ty, Some s1op)))]
@@ -518,7 +518,6 @@ and cmp_while (c:Ctxt.t) (rt:Ll.ty) ((e, b):exp node * stmt node list): Ctxt.t *
       let wh = gensym "while" in
       let stmtb = gensym "stm_block" in
       let end_wh = gensym "end" in
-      let curr = gensym "curr" in
       let (c1,s_b) = cmp_block c rt b in 
       let wh_block = [T (Br wh)] >@ [(L wh)] >@ s_e >@ [T (Cbr (op, stmtb, end_wh))] in
       let stmt_block = [(L stmtb)] >@s_b >@ [T (Br (wh))] in
