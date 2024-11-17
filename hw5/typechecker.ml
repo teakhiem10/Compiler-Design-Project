@@ -47,11 +47,21 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
       (Don't forget about OCaml's 'and' keyword.)
 *)
 let rec subtype (c : Tctxt.t) (t1 : Ast.ty) (t2 : Ast.ty) : bool =
-  failwith "todo: subtype"
+  match t1,t2 with
+  | TInt, TInt -> true
+  | TBool, TBool -> true
+  | TRef tref1, TRef tref2 -> subtype_ref c tref1 tref2
+  | TNullRef tref1, TNullRef tref2 -> subtype_ref c tref1 tref2
+  | _  -> false
 
 (* Decides whether H |-r ref1 <: ref2 *)
 and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
-  failwith "todo: subtype_ref"
+  match t1, t2 with
+  | RString, RString -> true
+  | RArray _, RArray _ -> true
+  | RStruct id1, RStruct id2-> true
+  | RFun (args1,ret1), RFun (args2,ret2) -> true
+  | _ -> false
 
 
 (* well-formed types -------------------------------------------------------- *)
