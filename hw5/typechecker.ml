@@ -46,12 +46,20 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
       relation. We have included a template for subtype_ref to get you started.
       (Don't forget about OCaml's 'and' keyword.)
 *)
+
+let rec split_list (a:'a list) (n:int) : 'a list= 
+  match a,n with
+  | [], _ -> []
+  | _, 0 -> []
+  | (x::xs),_ -> x :: split_list xs (n-1)
+
 let rec subtype (c : Tctxt.t) (t1 : Ast.ty) (t2 : Ast.ty) : bool =
   match t1,t2 with
   | TInt, TInt -> true
   | TBool, TBool -> true
   | TRef tref1, TRef tref2 -> subtype_ref c tref1 tref2
   | TNullRef tref1, TNullRef tref2 -> subtype_ref c tref1 tref2
+  | TRef tref1, TNullRef tref2 -> subtype_ref c tref1 tref2
   | _  -> false
 
 (* Decides whether H |-r ref1 <: ref2 *)
@@ -59,9 +67,29 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
   match t1, t2 with
   | RString, RString -> true
   | RArray _, RArray _ -> true
-  | RStruct id1, RStruct id2-> true
-  | RFun (args1,ret1), RFun (args2,ret2) -> true
+  | RStruct id1, RStruct id2 -> let struct1 = Tctxt.lookup_struct id1 c in
+                                let struct2 = Tctxt.lookup_struct id2 c in
+                                subtype_struct struct1 struct2
+  | RFun (args1,ret1), RFun (args2,ret2) -> let subtype_args = fun l1 l2 -> List.fold_right (subtype_fun c) (List.combine l1 l2) true in
+                                            let subtype_ret = subtype_rty c ret1 ret2 in
+                                            (List.length args1 == List.length args2) && (subtype_args args1 args2) && subtype_ret
   | _ -> false
+and subtype_fun (c:Tctxt.t) ((t1,t2):Ast.ty * Ast.ty) (b:bool) : bool = 
+  let check_type = (subtype c t1 t2) in
+  (if not check_type then
+    print_endline @@ (Astlib.string_of_ty t1) ^ " " ^ (Astlib.string_of_ty t1));
+  check_type && b
+and subtype_rty (c:Tctxt.t) (rty1 : Ast.ret_ty) (rty2 : Ast.ret_ty) : bool = 
+  match rty1,rty2 with
+  | RetVoid, RetVoid -> true
+  | RetVal t1, RetVal t2 -> subtype c t1 t2
+  | _ -> false
+and subtype_struct (f1:Ast.field list) (f2:Ast.field list): bool = 
+  let check_length = List.length f1 >= List.length f2 in
+  let check_same = fun (x) (y) -> x=y in
+  let hd_part = fun x -> split_list x (List.length f2) in
+  check_length && List.for_all2 check_same (hd_part f1) f2
+
 
 
 (* well-formed types -------------------------------------------------------- *)
