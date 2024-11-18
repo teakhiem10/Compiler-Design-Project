@@ -47,6 +47,7 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
       (Don't forget about OCaml's 'and' keyword.)
 *)
 
+(*take the first n elements in the list*)
 let rec split_list (a:'a list) (n:int) : 'a list= 
   match a,n with
   | [], _ -> []
@@ -72,12 +73,12 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
                                 subtype_struct struct1 struct2
   | RFun (args1,ret1), RFun (args2,ret2) -> let subtype_args = fun l1 l2 -> List.fold_right (subtype_fun c) (List.combine l1 l2) true in
                                             let subtype_ret = subtype_rty c ret1 ret2 in
-                                            (List.length args1 == List.length args2) && (subtype_args args1 args2) && subtype_ret
+                                            (List.length args1 == List.length args2) && (subtype_args args2 args1) && subtype_ret
   | _ -> false
 and subtype_fun (c:Tctxt.t) ((t1,t2):Ast.ty * Ast.ty) (b:bool) : bool = 
   let check_type = (subtype c t1 t2) in
-  (if not check_type then
-    print_endline @@ (Astlib.string_of_ty t1) ^ " " ^ (Astlib.string_of_ty t1));
+  (*(if not check_type then
+    print_endline @@ (Astlib.string_of_ty t1) ^ " " ^ (Astlib.string_of_ty t1));*)
   check_type && b
 and subtype_rty (c:Tctxt.t) (rty1 : Ast.ret_ty) (rty2 : Ast.ret_ty) : bool = 
   match rty1,rty2 with
@@ -108,8 +109,26 @@ and subtype_struct (f1:Ast.field list) (f2:Ast.field list): bool =
     - tc contains the structure definition context
  *)
 let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
-  failwith "todo: implement typecheck_ty"
+  match t with
+  | TInt -> ()
+  | TBool -> ()
+  | TRef refty-> typecheck_rty l tc refty
+  | TNullRef refty -> typecheck_rty l tc refty
 
+and typecheck_rty(l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
+  match t with
+  | RString -> ()
+  | RArray tarr -> typecheck_ty l tc tarr
+  | RFun (tlist,retty) -> List.iter (typecheck_ty l tc) tlist;
+                          typecheck_ret_ty l tc retty
+  | RStruct sid -> let struct1 = Tctxt.lookup_struct_option sid tc in 
+                    match struct1 with
+                    | None -> type_error l "Struct not found"
+                    | Some _ -> ()
+and typecheck_ret_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
+  match t with
+  | RetVoid -> ()
+  | RetVal t -> typecheck_ty l tc t
 (* typechecking expressions ------------------------------------------------- *)
 (* Typechecks an expression in the typing context c, returns the type of the
    expression.  This function should implement the inference rules given in the
@@ -136,7 +155,18 @@ let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
 
 *)
 let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
-  failwith "todo: implement typecheck_exp"
+  match e.elt with
+  | CNull t -> typecheck_rty e c t;
+               TNullRef t
+  | CInt _-> TInt
+  | CBool _ -> TBool
+  | CStr _ -> TRef RString
+  | Id id -> let ctxtlook = lookup_option id c in
+             begin match ctxtlook with
+             | Some t -> typecheck_ty e c t; t
+             | None -> type_error e ("Id not found in context: " ^ id)
+             end
+  | _ -> failwith "todo: implement rest typecheck_exp"
 
 (* statements --------------------------------------------------------------- *)
 
