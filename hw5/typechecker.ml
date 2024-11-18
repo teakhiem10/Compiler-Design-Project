@@ -11,6 +11,8 @@ let type_error (l : 'a node) err =
   let (_, (s, e), _) = l.loc in
   raise (TypeError (Printf.sprintf "[%d, %d] %s" s e err))
 
+let subtype_error (e : exp node) (t1:ty) (t2:ty) =
+  type_error e (Printf.sprintf "%s not a subtype of %s" (string_of_ty t1) (string_of_ty t2))
 
 (* initial context: G0 ------------------------------------------------------ *)
 (* The Oat types of the Oat built-in functions *)
@@ -166,6 +168,93 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
              | Some t -> typecheck_ty e c t; t
              | None -> type_error e ("Id not found in context: " ^ id)
              end
+  | CArr (ty, exps) -> 
+    let exp_tys = List.map (typecheck_exp c) exps in
+    List.iter (fun exp_ty -> 
+      if subtype c exp_ty ty then () 
+        else subtype_error e exp_ty ty)
+      exp_tys;
+    TRef (RArray ty)
+  | NewArr (ty, len_exp, id, gen_exp) -> 
+    begin match lookup_local_option id c with
+    | Some _ -> type_error e (id ^ " Already defined in this context")
+    | None -> 
+      let len_ty = typecheck_exp c len_exp in
+      begin match len_ty with
+      | TInt -> 
+        let gen_ty = typecheck_exp c gen_exp in 
+        if subtype c gen_ty ty then () else subtype_error e gen_ty ty;
+        TRef (RArray ty)
+      | _ -> type_error len_exp "length is not of type TInt"
+      end
+    end 
+  | Index (arr_exp, index_exp) -> 
+    begin match typecheck_exp c index_exp with
+    | TInt -> 
+      let arr_ty = typecheck_exp c arr_exp in
+      begin match arr_ty with
+      | TRef (RArray ty) -> ty
+      | _ -> type_error arr_exp "Array expression is not of an array type"
+      end
+    | _ -> type_error index_exp "index expression is not of type TInt"
+    end
+  | Length arr_exp -> 
+    begin match typecheck_exp c arr_exp with
+    | TRef (RArray _) -> TInt
+    | _ -> type_error arr_exp "Arrray expression is not of an array type"
+    end
+  | CStruct (id, named_exps) -> 
+    begin match lookup_struct_option id c with
+    | Some styp -> 
+      let sorted_struct_fields = List.sort (fun f1 -> fun f2 -> String.compare f1.fieldName f2.fieldName) styp in
+      let sorted_named_exps = List.sort (fun (id1, _) -> fun (id2, _) -> String.compare id1 id2) named_exps in
+      List.iter2 (fun {fieldName = fieldName; ftyp = fieldType} -> fun (exp_id, exp) -> 
+        if not @@ String.equal fieldName exp_id then type_error e (Printf.sprintf "Could not find attribute %s of struct %s" exp_id id)
+        else 
+          let exp_ty = typecheck_exp c exp in
+          if subtype c exp_ty fieldType then () else
+          subtype_error exp exp_ty fieldType) 
+        sorted_struct_fields sorted_named_exps;
+      TRef (RStruct id)
+    | None -> type_error e ("Could not find struct named " ^ id)
+    end
+  | Proj (s_exp, field_id) -> 
+    let styp = typecheck_exp c s_exp in
+    begin match styp with
+    | TRef (RStruct sid) -> 
+      begin match lookup_field_option sid field_id c with
+      | None -> type_error e (Printf.sprintf "Could not find field called %s in struct %s" field_id sid)
+      | Some field_ty -> field_ty
+      end
+    | _ -> type_error e "Tried to projec of a non-struct type"
+    end
+  | Call (f_exp, arg_exps) -> 
+    let ftype = typecheck_exp c f_exp in
+    let supplied_arg_types = List.map (typecheck_exp c) arg_exps in
+    begin match ftype with 
+    | TRef (RFun (arg_types, RetVal t_ret)) ->       
+      List.iter2 (fun supp_ty -> fun ty -> if subtype c supp_ty ty then () else subtype_error e supp_ty ty) supplied_arg_types arg_types;
+      t_ret
+    | _ -> type_error f_exp "Not a valid function type"
+    end
+  | Bop (bop, e1, e2) -> 
+    let t1 = typecheck_exp c e1 in
+    let t2 = typecheck_exp c e2 in
+    begin match bop with
+    | Eq | Neq -> 
+      if subtype c t1 t2 then 
+        if subtype c t2 t1 then TBool
+        else subtype_error e t2 t1
+      else subtype_error e t1 t2
+    | _ -> 
+      let (bt1, bt2, btret) = typ_of_binop bop in
+      if (t1 = bt1 ) && (t2 = bt2) then btret 
+      else type_error e "Types do not match the binary expression"
+    end
+  | Uop (uop, exp) ->
+    let (ut, t_ret) = typ_of_unop uop in
+    let exp_ty = typecheck_exp c exp in
+    if ut = exp_ty then t_ret else type_error exp "Wrong type for unary expression"
   | _ -> failwith "todo: implement rest typecheck_exp"
 
 (* statements --------------------------------------------------------------- *)
