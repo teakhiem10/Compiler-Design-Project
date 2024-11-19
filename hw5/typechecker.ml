@@ -197,7 +197,7 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
         let len_ty = typecheck_exp c len_exp in
         begin match len_ty with
           | TInt -> 
-            let gen_ty = typecheck_exp c gen_exp in 
+            let gen_ty = typecheck_exp (add_local c id TInt) gen_exp in 
             if subtype c gen_ty ty then () else subtype_error e gen_ty ty;
             TRef (RArray ty)
           | _ -> type_error len_exp "length is not of type TInt"
