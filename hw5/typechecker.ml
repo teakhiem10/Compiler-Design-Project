@@ -306,7 +306,16 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
      block typecheck rules.
 *)
 let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
-  failwith "todo: implement typecheck_stmt"
+  match s.elt with 
+  | Assn _
+  | Decl _ 
+  | Ret _
+  | SCall _
+  | If _ 
+  | Cast _ 
+  | For _
+  | While _
+  |_ -> failwith "todo: implement typecheck_stmt"
 
 
 (* struct type declarations ------------------------------------------------- *)
