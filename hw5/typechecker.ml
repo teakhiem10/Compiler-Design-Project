@@ -351,13 +351,13 @@ let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
   let helper (c:Tctxt.t) (decl:decl) : Tctxt.t = 
     begin match decl with 
     | Gvdecl _ | Gfdecl _ -> c
-    | Gtdecl {elt=(id, fields);_} -> 
+    | Gtdecl ({elt=(id, fields);_} as l) -> 
       let sorted_fields = List.sort (fun {fieldName=id1;_} -> fun {fieldName=id2;_} -> String.compare id1 id2) fields in
       let _ = List.fold_left (fun prev -> fun curr -> 
         begin match prev with 
         | None -> Some curr 
         | Some name -> 
-          if name = curr then type_error (no_loc @@ CStr "This is not an exp") "Duplicated struct fields" 
+          if name = curr then type_error l "Duplicated struct fields" 
           else Some curr
         end) None sorted_fields in ();
       Tctxt.add_struct c id fields
@@ -367,9 +367,9 @@ let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   let helper (c:Tctxt.t) (decl:decl) : Tctxt.t = 
     begin match decl with
     | Gvdecl _ | Gtdecl _ -> c
-    | Gfdecl {elt={frtyp=ret_ty; fname=id; args=args;_};_} -> 
+    | Gfdecl ({elt={frtyp=ret_ty; fname=id; args=args;_};_} as l) -> 
       begin match lookup_global_option id c with
-      | Some _ -> type_error (no_loc @@ CStr "This is not an exp") "duplicated function name"
+      | Some _ -> type_error l "duplicated function name"
       | None ->  
         let arg_types = List.map fst args in
         add_global c id (TRef (RFun (arg_types, ret_ty)))
