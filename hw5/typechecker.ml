@@ -368,9 +368,25 @@ and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * 
       else subtype_error s (TRef rhs_rty) (TRef target_ty)
     | _ -> type_error s "rhs is not ref?"
     end
-  | For _
-  | While _
-  |_ -> failwith "todo: implement typecheck_stmt"
+  | For (vdecls, exp_opt, stmt_opt, b) ->
+    begin match exp_opt, stmt_opt with
+    | Some e, Some stmt ->
+      let new_tctxt = List.fold_left (fun c (id, exp) -> add_local c id (typecheck_exp tc exp)) tc vdecls in
+      let exp_ty = typecheck_exp new_tctxt e in
+      if exp_ty = TBool then 
+        let _, returns = typecheck_stmt new_tctxt stmt to_ret in
+        if returns then type_error s "Cannot return in for statement"
+        else let _ = typecheck_block new_tctxt b to_ret s in
+        tc, false
+      else type_error s "Expression in for loop must be type TBool"
+    | _, _ -> type_error s "Only uspport full for-loop variant"
+    end
+  | While (cond_exp, b) ->
+    let cond_ty = typecheck_exp tc cond_exp in
+    if cond_ty = TBool then 
+      let _ = typecheck_block tc b to_ret s in 
+      tc, false
+    else type_error s "Condition expression does not have type TBool in While"
 
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is 
