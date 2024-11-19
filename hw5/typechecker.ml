@@ -27,6 +27,21 @@ let builtins =
   ; "print_bool",       ([TBool], RetVoid)
   ]
 
+let string_of_fields (fs:field list) : string = 
+  "{" ^ 
+  (List.map (fun {fieldName=id;ftyp=ty} -> Printf.sprintf "%s: %s" id (string_of_ty ty)) fs|> String.concat ", ") ^ 
+  "}"
+
+
+let string_of_id_tuple (f : 'a -> string) (lst : (id * 'a) list) : string =
+  List.map (fun (id, x) -> Printf.sprintf "%s: %s" id (f x)) lst |> String.concat "\n"
+
+let string_of_ctxt ({locals=l; globals=g; structs=s}:Tctxt.t) : string = 
+  let l_str = string_of_id_tuple string_of_ty l in 
+  let g_str = string_of_id_tuple string_of_ty g in
+  let s_str = string_of_id_tuple string_of_fields s in
+  String.concat "\n\n" [l_str; g_str; s_str]
+
 (* binary operation types --------------------------------------------------- *)
 let typ_of_binop : Ast.binop -> Ast.ty * Ast.ty * Ast.ty = function
   | Add | Mul | Sub | Shl | Shr | Sar | IAnd | IOr -> (TInt, TInt, TInt)
@@ -125,7 +140,7 @@ and typecheck_rty(l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.rty) : unit =
                           typecheck_ret_ty l tc retty
   | RStruct sid -> let struct1 = Tctxt.lookup_struct_option sid tc in 
                     match struct1 with
-                    | None -> type_error l "Struct not found"
+    | None -> type_error l (Printf.sprintf "Struct %s not found" sid)
                     | Some _ -> ()
 and typecheck_ret_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ret_ty) : unit =
   match t with
@@ -352,17 +367,12 @@ let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
     begin match decl with 
     | Gvdecl _ | Gfdecl _ -> c
     | Gtdecl ({elt=(id, fields);_} as l) -> 
-      let sorted_fields = List.sort (fun {fieldName=id1;_} -> fun {fieldName=id2;_} -> String.compare id1 id2) fields in
-      let _ = List.fold_left (fun prev -> fun curr -> 
-        begin match prev with 
-        | None -> Some curr 
-        | Some name -> 
-          if name = curr then type_error l "Duplicated struct fields" 
-          else Some curr
-        end) None sorted_fields in ();
-      Tctxt.add_struct c id fields
+        let new_ctxt = Tctxt.add_struct c id fields in
+        typecheck_tdecl new_ctxt id fields l;
+        new_ctxt
     end in
   List.fold_left helper Tctxt.empty p
+
 let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   let helper (c:Tctxt.t) (decl:decl) : Tctxt.t = 
     begin match decl with
@@ -371,6 +381,8 @@ let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
       begin match lookup_global_option id c with
       | Some _ -> type_error l "duplicated function name"
       | None ->  
+            let arg_fields = List.map (fun (ty, id) -> {fieldName=id; ftyp=ty}) args in
+            typecheck_tdecl c id arg_fields l;
         let arg_types = List.map fst args in
         add_global c id (TRef (RFun (arg_types, ret_ty)))
       end
@@ -381,8 +393,11 @@ let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   let helper (c:Tctxt.t) (decl:decl) : (Tctxt.t) = 
     begin match decl with
     | Gfdecl _ | Gtdecl _ -> c
-    | Gvdecl {elt={name=id; init=init_exp};_} -> 
-      Tctxt.add_global c id (typecheck_exp c init_exp)
+      | Gvdecl ({elt={name=id; init=init_exp};_} as l) -> 
+        begin match lookup_global_option id c with
+          | Some _ -> type_error l (Printf.sprintf "global declaration %s arleady exists" id)
+          | None -> Tctxt.add_global c id (typecheck_exp tc init_exp)
+        end
     end
   in
   List.fold_left helper tc p
@@ -395,6 +410,7 @@ let typecheck_program (p:Ast.prog) : unit =
   let sc = create_struct_ctxt p in
   let fc = create_function_ctxt sc p in
   let tc = create_global_ctxt fc p in
+  (*print_endline @@ string_of_ctxt tc;*)
   List.iter (fun p ->
     match p with
     | Gfdecl ({elt=f} as l) -> typecheck_fdecl tc f l
