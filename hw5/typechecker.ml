@@ -305,7 +305,17 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
    - You will probably find it convenient to add a helper function that implements the 
      block typecheck rules.
 *)
-let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
+
+let rec typecheck_block: 'a. Tctxt.t -> block -> ret_ty -> 'a Ast.node -> bool = 
+  fun (tc : Tctxt.t) (b : block) (ret_ty:ret_ty) (l : 'a Ast.node) ->
+  let helper ((c, r):Tctxt.t * bool) (stmt : stmt node) : (Tctxt.t * bool) = begin
+    let new_ctxt, returns = typecheck_stmt c stmt ret_ty in
+    new_ctxt, returns || r
+  end
+  in
+  let (_, returns) = List.fold_left helper (tc, false) b in
+  returns
+and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
   match s.elt with 
   | Assn (lhs_exp, rhs_exp) ->
     begin match lhs_exp.elt with 
@@ -339,12 +349,27 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
         tc, false
     | _ -> type_error s "Not a valid function to call"
     end
-  | If _ 
-  | Cast _ 
+  | If (cond_exp, b1, b2) ->
+    if (typecheck_exp tc cond_exp) = TBool then begin
+      let b1_r = typecheck_block tc b1 to_ret s in
+      let b2_r = typecheck_block tc b2 to_ret s in
+      tc, b1_r && b2_r
+      end
+    else type_error s "Condition is not of type TBool in if-statement"
+  | Cast (target_ty, id, rhs_exp, b1, b2) ->
+    let rhs_ty = typecheck_exp tc rhs_exp in
+    begin match rhs_ty with
+    | TNullRef rhs_rty -> 
+      if subtype_ref tc rhs_rty target_ty then
+        let b1_r = typecheck_block tc b1 to_ret s in
+        let b2_r = typecheck_block tc b2 to_ret s in
+        tc, b1_r && b2_r
+      else subtype_error s (TRef rhs_rty) (TRef target_ty)
+    | _ -> type_error s "rhs is not ref?"
+    end
   | For _
   | While _
   |_ -> failwith "todo: implement typecheck_stmt"
-
 
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is 
@@ -370,19 +395,9 @@ let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
    - checks that the function actually returns
 *)
 
-let typecheck_block (tc : Tctxt.t) (b : block) (ret_ty:ret_ty) (l : 'a Ast.node): unit = 
-  let helper ((c, r):Tctxt.t * bool) (stmt : stmt node) : (Tctxt.t * bool) = begin
-    let new_ctxt, returns = typecheck_stmt c stmt ret_ty in
-    new_ctxt, returns || r
-  end
-  in
-  let (_, returns) = List.fold_left helper (tc, false) b in
-  if returns then () else type_error l "Block does not return"
-
-
 let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
   let f_tc = List.fold_left (fun c -> fun (ty, id) -> add_local c id ty) tc f.args in
-  typecheck_block f_tc f.body f.frtyp l
+  if typecheck_block f_tc f.body f.frtyp l then () else type_error l "Function does not return"
 
 (* creating the typchecking context ----------------------------------------- *)
 
