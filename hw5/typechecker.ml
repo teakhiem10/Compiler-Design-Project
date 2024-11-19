@@ -451,9 +451,13 @@ let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
     begin match decl with 
       | Gvdecl _ | Gfdecl _ -> c
       | Gtdecl ({elt=(id, fields);_} as l) -> 
-        let new_ctxt = Tctxt.add_struct c id fields in
-        typecheck_tdecl new_ctxt id fields l;
-        new_ctxt
+        begin match lookup_struct_option id c with
+        | Some _ -> type_error (no_loc decl) "Struct with this name already exists"
+        | None -> 
+          let new_ctxt = Tctxt.add_struct c id fields in
+          typecheck_tdecl new_ctxt id fields l;
+          new_ctxt
+        end
     end in
   List.fold_left helper Tctxt.empty p
 
