@@ -361,8 +361,9 @@ and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * 
     begin match rhs_ty with
     | TNullRef rhs_rty -> 
       if subtype_ref tc rhs_rty target_ty then
-        let b1_r = typecheck_block tc b1 to_ret s in
-        let b2_r = typecheck_block tc b2 to_ret s in
+        let new_tctxt = add_local tc id rhs_ty in
+        let b1_r = typecheck_block new_tctxt b1 to_ret s in
+        let b2_r = typecheck_block new_tctxt b2 to_ret s in
         tc, b1_r && b2_r
       else subtype_error s (TRef rhs_rty) (TRef target_ty)
     | _ -> type_error s "rhs is not ref?"
