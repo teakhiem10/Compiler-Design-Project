@@ -343,8 +343,10 @@ let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
 *)
 
 let typecheck_block (tc : Tctxt.t) (b : block) (ret_ty:ret_ty) (l : 'a Ast.node): unit = 
-  let helper ((c, _):Tctxt.t * bool) (stmt : stmt node) : (Tctxt.t * bool) = 
-    typecheck_stmt c stmt ret_ty 
+  let helper ((c, r):Tctxt.t * bool) (stmt : stmt node) : (Tctxt.t * bool) = begin
+    let new_ctxt, returns = typecheck_stmt c stmt ret_ty in
+    new_ctxt, returns || r
+  end
   in
   let (_, returns) = List.fold_left helper (tc, false) b in
   if returns then () else type_error l "Block does not return"
