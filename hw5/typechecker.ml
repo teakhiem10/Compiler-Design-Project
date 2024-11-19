@@ -11,8 +11,8 @@ let type_error (l : 'a node) err =
   let (_, (s, e), _) = l.loc in
   raise (TypeError (Printf.sprintf "[%d, %d] %s" s e err))
 
-let subtype_error (e : exp node) (t1:ty) (t2:ty) =
-  type_error e (Printf.sprintf "%s not a subtype of %s" (string_of_ty t1) (string_of_ty t2))
+let subtype_error (l : 'a node) (t1:ty) (t2:ty) =
+  type_error l (Printf.sprintf "%s not a subtype of %s" (string_of_ty t1) (string_of_ty t2))
 
 (* initial context: G0 ------------------------------------------------------ *)
 (* The Oat types of the Oat built-in functions *)
@@ -307,10 +307,38 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
 *)
 let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
   match s.elt with 
-  | Assn _
-  | Decl _ 
-  | Ret _
-  | SCall _
+  | Assn (lhs_exp, rhs_exp) ->
+    begin match lhs_exp.elt with 
+      | Id _ | Index _ | Proj _ -> 
+        (* need to somehow rule out global functions here *)
+        let lhs_ty = typecheck_exp tc lhs_exp in
+        let rhs_ty = typecheck_exp tc rhs_exp in
+        if subtype tc rhs_ty lhs_ty then tc, false 
+        else type_error s "rhs is not a subtypeof rhs in assignment"
+      | _ -> type_error s "Invalid lhs of assignment"
+    end
+  | Decl (id, exp) ->
+    let exp_ty = typecheck_exp tc exp in
+    add_local tc id exp_ty, false  
+  | Ret e -> begin match e, to_ret with
+    | None, RetVoid -> tc, true
+    | Some exp, RetVal ty -> 
+      let exp_ty = typecheck_exp tc exp in
+      if subtype tc exp_ty ty then tc, true 
+      else type_error s "expression type is not subtype of declared return type"
+    | _, _ -> type_error s "Void and expression mismatch in return statement"
+    end
+  | SCall (f_exp, arg_exps) -> 
+    let f_ty = typecheck_exp tc f_exp in
+    let arg_tys = List.map (typecheck_exp tc) arg_exps in
+    begin match f_ty with 
+    | TRef (RFun (reported_arg_tys, RetVoid)) -> 
+      List.iter2 (fun arg_ty -> fun rep_ty -> 
+        if subtype tc arg_ty rep_ty then ()
+        else subtype_error s arg_ty rep_ty) arg_tys reported_arg_tys; 
+        tc, false
+    | _ -> type_error s "Not a valid function to call"
+    end
   | If _ 
   | Cast _ 
   | For _
