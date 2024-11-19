@@ -221,6 +221,7 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   | CStruct (id, named_exps) -> 
     begin match lookup_struct_option id c with
       | Some styp -> 
+        if List.length styp = List.length named_exps then () else type_error e "Wrong number of struct fields";
         let sorted_struct_fields = List.sort (fun f1 -> fun f2 -> String.compare f1.fieldName f2.fieldName) styp in
         let sorted_named_exps = List.sort (fun (id1, _) -> fun (id2, _) -> String.compare id1 id2) named_exps in
         List.iter2 (fun {fieldName = fieldName; ftyp = fieldType} -> fun (exp_id, exp) -> 
@@ -247,7 +248,8 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
     let ftype = typecheck_exp c f_exp in
     let supplied_arg_types = List.map (typecheck_exp c) arg_exps in
     begin match ftype with 
-      | TRef (RFun (arg_types, RetVal t_ret)) ->       
+      | TRef (RFun (arg_types, RetVal t_ret)) ->  
+        if (List.length arg_types) = (List.length supplied_arg_types) then () else type_error e "Wrong number of arguments";
         List.iter2 (fun supp_ty -> fun ty -> if subtype c supp_ty ty then () else subtype_error e supp_ty ty) supplied_arg_types arg_types;
         t_ret
       | _ -> type_error f_exp "Not a valid function type"
