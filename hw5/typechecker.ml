@@ -331,8 +331,12 @@ and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * 
       | _ -> type_error s "Invalid lhs of assignment"
     end
   | Decl (id, exp) ->
-    let exp_ty = typecheck_exp tc exp in
-    add_local tc id exp_ty, false  
+    begin match lookup_local_option id tc with
+    | Some _ -> type_error s "Cannot redeclare local variable"
+    | None -> 
+      let exp_ty = typecheck_exp tc exp in
+      add_local tc id exp_ty, false  
+    end
   | Ret e -> begin match e, to_ret with
       | None, RetVoid -> tc, true
       | Some exp, RetVal ty -> 
