@@ -348,10 +348,25 @@ let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
    constants, but can't mention other global values *)
 
 let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
-  failwith "todo: create_struct_ctxt"
-
+  let helper (c:Tctxt.t) (decl:decl) : Tctxt.t = 
+    begin match decl with 
+    | Gvdecl _ | Gfdecl _ -> c
+    | Gtdecl {elt=(id, fields);_} -> Tctxt.add_struct c id fields
+    end in
+  List.fold_left helper Tctxt.empty p
 let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
-  failwith "todo: create_function_ctxt"
+  let helper (c:Tctxt.t) (decl:decl) : Tctxt.t = 
+    begin match decl with
+    | Gvdecl _ | Gtdecl _ -> c
+    | Gfdecl {elt={frtyp=ret_ty; fname=id; args=args;_};_} -> 
+      begin match lookup_global_option id c with
+      | Some _ -> failwith "duplicated function name"
+      | None ->  
+        let arg_types = List.map fst args in
+        add_global c id (TRef (RFun (arg_types, ret_ty)))
+      end
+    end in
+  List.fold_left helper tc p
 
 let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   failwith "todo: create_function_ctxt"
