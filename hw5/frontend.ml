@@ -276,7 +276,18 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
        of the array struct representation.
   *)
   | Ast.Length e ->
-    failwith "todo:implement Ast.Length case"
+    let exp_ty,exp_op,stream_exp = cmp_exp tc c e
+     in
+     let arr_ty = begin match exp_ty with
+     | Ptr (Struct [I64; Array (_,ty)]) -> ty
+     | _ -> failwith "not an arraytype"
+      end
+     in
+     let ptr_length = gensym "ptr_length" in
+     let length = gensym "length" in
+     let get_length_stream = [I (ptr_length, Gep (exp_ty,exp_op,[Const 0L;Const 0L]))] in
+     let stream_load = [I (length, Load (Ptr I64, Id ptr_length))] in
+    I64, (Id length), stream_exp >@ get_length_stream >@ stream_load
 
   | Ast.Index (e, i) ->
     let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
