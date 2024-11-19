@@ -309,6 +309,7 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
 let rec typecheck_block: 'a. Tctxt.t -> block -> ret_ty -> 'a Ast.node -> bool = 
   fun (tc : Tctxt.t) (b : block) (ret_ty:ret_ty) (l : 'a Ast.node) ->
   let helper ((c, r):Tctxt.t * bool) (stmt : stmt node) : (Tctxt.t * bool) = begin
+    if r then type_error l "Early return not allowed" else ();
     let new_ctxt, returns = typecheck_stmt c stmt ret_ty in
     new_ctxt, returns || r
   end
@@ -331,55 +332,55 @@ and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * 
     let exp_ty = typecheck_exp tc exp in
     add_local tc id exp_ty, false  
   | Ret e -> begin match e, to_ret with
-    | None, RetVoid -> tc, true
-    | Some exp, RetVal ty -> 
-      let exp_ty = typecheck_exp tc exp in
-      if subtype tc exp_ty ty then tc, true 
-      else type_error s "expression type is not subtype of declared return type"
-    | _, _ -> type_error s "Void and expression mismatch in return statement"
+      | None, RetVoid -> tc, true
+      | Some exp, RetVal ty -> 
+        let exp_ty = typecheck_exp tc exp in
+        if subtype tc exp_ty ty then tc, true 
+        else type_error s "expression type is not subtype of declared return type"
+      | _, _ -> type_error s "Void and expression mismatch in return statement"
     end
   | SCall (f_exp, arg_exps) -> 
     let f_ty = typecheck_exp tc f_exp in
     let arg_tys = List.map (typecheck_exp tc) arg_exps in
     begin match f_ty with 
-    | TRef (RFun (reported_arg_tys, RetVoid)) -> 
-      List.iter2 (fun arg_ty -> fun rep_ty -> 
-        if subtype tc arg_ty rep_ty then ()
-        else subtype_error s arg_ty rep_ty) arg_tys reported_arg_tys; 
+      | TRef (RFun (reported_arg_tys, RetVoid)) -> 
+        List.iter2 (fun arg_ty -> fun rep_ty -> 
+            if subtype tc arg_ty rep_ty then ()
+            else subtype_error s arg_ty rep_ty) arg_tys reported_arg_tys; 
         tc, false
-    | _ -> type_error s "Not a valid function to call"
+      | _ -> type_error s "Not a valid function to call"
     end
   | If (cond_exp, b1, b2) ->
     if (typecheck_exp tc cond_exp) = TBool then begin
       let b1_r = typecheck_block tc b1 to_ret s in
       let b2_r = typecheck_block tc b2 to_ret s in
       tc, b1_r && b2_r
-      end
+    end
     else type_error s "Condition is not of type TBool in if-statement"
   | Cast (target_ty, id, rhs_exp, b1, b2) ->
     let rhs_ty = typecheck_exp tc rhs_exp in
     begin match rhs_ty with
-    | TNullRef rhs_rty -> 
-      if subtype_ref tc rhs_rty target_ty then
-        let new_tctxt = add_local tc id rhs_ty in
-        let b1_r = typecheck_block new_tctxt b1 to_ret s in
-        let b2_r = typecheck_block new_tctxt b2 to_ret s in
-        tc, b1_r && b2_r
-      else subtype_error s (TRef rhs_rty) (TRef target_ty)
-    | _ -> type_error s "rhs is not ref?"
+      | TNullRef rhs_rty -> 
+        if subtype_ref tc rhs_rty target_ty then
+          let new_tctxt = add_local tc id rhs_ty in
+          let b1_r = typecheck_block new_tctxt b1 to_ret s in
+          let b2_r = typecheck_block new_tctxt b2 to_ret s in
+          tc, b1_r && b2_r
+        else subtype_error s (TRef rhs_rty) (TRef target_ty)
+      | _ -> type_error s "rhs is not ref?"
     end
   | For (vdecls, exp_opt, stmt_opt, b) ->
     begin match exp_opt, stmt_opt with
-    | Some e, Some stmt ->
-      let new_tctxt = List.fold_left (fun c (id, exp) -> add_local c id (typecheck_exp tc exp)) tc vdecls in
-      let exp_ty = typecheck_exp new_tctxt e in
-      if exp_ty = TBool then 
-        let _, returns = typecheck_stmt new_tctxt stmt to_ret in
-        if returns then type_error s "Cannot return in for statement"
-        else let _ = typecheck_block new_tctxt b to_ret s in
-        tc, false
-      else type_error s "Expression in for loop must be type TBool"
-    | _, _ -> type_error s "Only uspport full for-loop variant"
+      | Some e, Some stmt ->
+        let new_tctxt = List.fold_left (fun c (id, exp) -> add_local c id (typecheck_exp tc exp)) tc vdecls in
+        let exp_ty = typecheck_exp new_tctxt e in
+        if exp_ty = TBool then 
+          let _, returns = typecheck_stmt new_tctxt stmt to_ret in
+          if returns then type_error s "Cannot return in for statement"
+          else let _ = typecheck_block new_tctxt b to_ret s in
+            tc, false
+        else type_error s "Expression in for loop must be type TBool"
+      | _, _ -> type_error s "Only uspport full for-loop variant"
     end
   | While (cond_exp, b) ->
     let cond_ty = typecheck_exp tc cond_exp in
@@ -468,7 +469,8 @@ let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
             add_global c id (TRef (RFun (arg_types, ret_ty)))
         end
     end in
-  List.fold_left helper tc p
+  let builtins_p = List.map (fun (id, (arg_tys, ret_ty)) -> Gfdecl (no_loc {frtyp=ret_ty; fname=id; args=List.mapi (fun i ty -> (ty, string_of_int i)) arg_tys; body=[]})) builtins in
+  List.fold_left helper tc (p @ builtins_p) 
 
 let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   let helper (c:Tctxt.t) (decl:decl) : (Tctxt.t) = 
