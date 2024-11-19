@@ -351,7 +351,16 @@ let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
   let helper (c:Tctxt.t) (decl:decl) : Tctxt.t = 
     begin match decl with 
     | Gvdecl _ | Gfdecl _ -> c
-    | Gtdecl {elt=(id, fields);_} -> Tctxt.add_struct c id fields
+    | Gtdecl {elt=(id, fields);_} -> 
+      let sorted_fields = List.sort (fun {fieldName=id1;_} -> fun {fieldName=id2;_} -> String.compare id1 id2) fields in
+      let _ = List.fold_left (fun prev -> fun curr -> 
+        begin match prev with 
+        | None -> Some curr 
+        | Some name -> 
+          if name = curr then failwith "Duplicated struct fields" 
+          else Some curr
+        end) None sorted_fields in ();
+      Tctxt.add_struct c id fields
     end in
   List.fold_left helper Tctxt.empty p
 let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
