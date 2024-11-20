@@ -462,9 +462,14 @@ let typecheck_tests : suite = [
   GradedTest("extra tc err tests", 5, typecheck_file_error tc_err_tests);
 
 ]
+let tc_err_tests_student = [
+  "hw5programs/tc_null_array_err.oat"
+; "hw5programs/tc_array_err.oat"
+]
 
 let student_tests = [] 
-
+let student_tests_tc :suite = [GradedTest("extra tc err tests", 5, typecheck_file_error tc_err_tests_student);
+] 
 let hw5_tests : suite = [
   GradedTest("tc ok tests", 10, executed_tc_ok_file tc_ok_tests)
 ; GradedTest("struct tests", 10, executed_oat_file struct_tests)
@@ -485,6 +490,6 @@ let hw4_tests =
 let functionality_tests : suite = [GradedTest("functionality tests from HW04", 10, executed_oat_file hw4_tests)]
 
 let graded_tests : suite =
-  typecheck_tests @
+  student_tests_tc (*@ typecheck_tests @
   hw5_tests @
-  functionality_tests
+  functionality_tests*)

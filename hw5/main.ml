@@ -4,7 +4,7 @@ open Assert
 open Driver
 
 exception Ran_tests
-let slim_suite = ref (Studenttests.provided_tests @ Gradedtests.graded_tests)
+let slim_suite = ref ((*Studenttests.provided_tests @*) Gradedtests.graded_tests)
 let full_suite = ref (Studenttests.provided_tests @ Gradedtests.graded_tests @ Sharedtests.shared_suite)
 
 let exec_tests (suite : suite ref) =

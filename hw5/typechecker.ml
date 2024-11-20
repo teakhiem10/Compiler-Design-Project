@@ -84,13 +84,13 @@ let rec subtype (c : Tctxt.t) (t1 : Ast.ty) (t2 : Ast.ty) : bool =
 and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
   match t1, t2 with
   | RString, RString -> true
-  | RArray _, RArray _ -> true
+  | RArray t1, RArray t2 -> true
   | RStruct id1, RStruct id2 -> let struct1 = Tctxt.lookup_struct id1 c in
-    let struct2 = Tctxt.lookup_struct id2 c in
-    subtype_struct struct1 struct2
+                                let struct2 = Tctxt.lookup_struct id2 c in
+                                subtype_struct struct1 struct2
   | RFun (args1,ret1), RFun (args2,ret2) -> let subtype_args = fun l1 l2 -> List.fold_right (subtype_fun c) (List.combine l1 l2) true in
-    let subtype_ret = subtype_rty c ret1 ret2 in
-    (List.length args1 == List.length args2) && (subtype_args args2 args1) && subtype_ret
+                                            let subtype_ret = subtype_rty c ret1 ret2 in
+                                        (List.length args1 == List.length args2) && (subtype_args args2 args1) && subtype_ret
   | _ -> false
 and subtype_fun (c:Tctxt.t) ((t1,t2):Ast.ty * Ast.ty) (b:bool) : bool = 
   let check_type = (subtype c t1 t2) in
@@ -209,6 +209,7 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
         let arr_ty = typecheck_exp c arr_exp in
         begin match arr_ty with
           | TRef (RArray ty) -> ty
+          | TNullRef (RArray ty) -> ty
           | _ -> type_error arr_exp "Array expression is not of an array type"
         end
       | _ -> type_error index_exp "index expression is not of type TInt"
@@ -216,7 +217,9 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
   | Length arr_exp -> 
     begin match typecheck_exp c arr_exp with
       | TRef (RArray _) -> TInt
-      | _ -> type_error arr_exp "Arrray expression is not of an array type"
+      | TNullRef(RArray _) -> TInt
+      | _ -> type_error arr_exp @@ "Array expression is not of an array type, Exp: " ^ Astlib.string_of_exp arr_exp
+              ^ " ty: " ^ (Astlib.string_of_ty @@typecheck_exp c arr_exp)
     end
   | CStruct (id, named_exps) -> 
     begin match lookup_struct_option id c with
@@ -272,7 +275,6 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
     let (ut, t_ret) = typ_of_unop uop in
     let exp_ty = typecheck_exp c exp in
     if ut = exp_ty then t_ret else type_error exp "Wrong type for unary expression"
-  | _ -> failwith "todo: implement rest typecheck_exp"
 
 (* statements --------------------------------------------------------------- *)
 
@@ -307,6 +309,14 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
    - You will probably find it convenient to add a helper function that implements the 
      block typecheck rules.
 *)
+let rec get_id (e: Ast.exp node) : id = 
+  begin match e.elt with 
+                | Id i -> i
+                | Index (idarr,ind)-> get_id idarr
+                | Proj (id1,id2) -> get_id id1
+                  (* need to somehow rule out global functions here *)     
+                | _ -> type_error e "Invalid lhs of assignment"
+    end 
 
 let rec typecheck_block: 'a. Tctxt.t -> block -> ret_ty -> 'a Ast.node -> bool = 
   fun (tc : Tctxt.t) (b : block) (ret_ty:ret_ty) (l : 'a Ast.node) ->
@@ -321,20 +331,24 @@ let rec typecheck_block: 'a. Tctxt.t -> block -> ret_ty -> 'a Ast.node -> bool =
 and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
   match s.elt with 
   | Assn (lhs_exp, rhs_exp) ->
-    begin match lhs_exp.elt with 
-      | Id _ | Index _ | Proj _ -> 
-        (* need to somehow rule out global functions here *)
-        let lhs_ty = typecheck_exp tc lhs_exp in
-        let rhs_ty = typecheck_exp tc rhs_exp in
-        if subtype tc rhs_ty lhs_ty then tc, false 
-        else type_error s "rhs is not a subtypeof rhs in assignment"
-      | _ -> type_error s "Invalid lhs of assignment"
-    end
+    let lhs_ty = typecheck_exp tc lhs_exp in
+    let rhs_ty = typecheck_exp tc rhs_exp in
+    let lhsid = get_id lhs_exp in
+    (*print_endline @@ "lhs: " ^ Astlib.string_of_exp lhs_exp ^ ", rhs: " ^ Astlib.string_of_exp rhs_exp;
+    print_endline @@ "lhs: " ^ Astlib.string_of_ty lhs_ty ^ ", rhs: " ^ Astlib.string_of_ty rhs_ty;*)
+    (*check if it has a local or global id*)
+    if((lookup_local_option lhsid tc) = None && not(lookup_global_option lhsid tc = None && lookup_struct_option lhsid tc = None)) then 
+      type_error s @@ "lhs doesn't have local declaration and not global definition, lhs: " ^ (Astlib.string_of_exp lhs_exp);
+    if subtype tc rhs_ty lhs_ty then tc, false 
+    else type_error s @@ "rhs is not a subtype of lhs in assignment, lhs: " ^ (Astlib.string_of_ty lhs_ty) ^ ", rhs: " ^ (Astlib.string_of_ty rhs_ty)
   | Decl (id, exp) ->
     begin match lookup_local_option id tc with
     | Some _ -> type_error s "Cannot redeclare local variable"
     | None -> 
       let exp_ty = typecheck_exp tc exp in
+      print_endline @@ "exp: " ^ Astlib.string_of_exp exp;
+
+      print_endline @@ "ty: " ^ Astlib.string_of_ty exp_ty;
       add_local tc id exp_ty, false  
     end
   | Ret e -> begin match e, to_ret with
