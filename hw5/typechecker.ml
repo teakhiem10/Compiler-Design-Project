@@ -84,7 +84,7 @@ let rec subtype (c : Tctxt.t) (t1 : Ast.ty) (t2 : Ast.ty) : bool =
 and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
   match t1, t2 with
   | RString, RString -> true
-  | RArray t1, RArray t2 -> true
+  | RArray t1, RArray t2 -> t1 = t2
   | RStruct id1, RStruct id2 -> let struct1 = Tctxt.lookup_struct id1 c in
                                 let struct2 = Tctxt.lookup_struct id2 c in
                                 subtype_struct struct1 struct2
@@ -209,8 +209,7 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
         let arr_ty = typecheck_exp c arr_exp in
         begin match arr_ty with
           | TRef (RArray ty) -> ty
-          | TNullRef (RArray ty) -> ty
-          | _ -> type_error arr_exp "Array expression is not of an array type"
+          | _ -> type_error arr_exp @@ "Array expression is not of an array type: " ^ (Astlib.string_of_ty arr_ty)
         end
       | _ -> type_error index_exp "index expression is not of type TInt"
     end
@@ -318,7 +317,7 @@ let rec get_id (e: Ast.exp node) : id =
                 | _ -> type_error e "Invalid lhs of assignment"
     end 
 
-let rec typecheck_block: 'a. Tctxt.t -> block -> ret_ty -> 'a Ast.node -> bool = 
+let rec typecheck_block: 'a. Tctxt.t -> block -> ret_ty -> 'a Ast.node -> Tctxt.t * bool = 
   fun (tc : Tctxt.t) (b : block) (ret_ty:ret_ty) (l : 'a Ast.node) ->
   let helper ((c, r):Tctxt.t * bool) (stmt : stmt node) : (Tctxt.t * bool) = begin
     if r then type_error l "Early return not allowed" else ();
@@ -326,15 +325,15 @@ let rec typecheck_block: 'a. Tctxt.t -> block -> ret_ty -> 'a Ast.node -> bool =
     new_ctxt, returns || r
   end
   in
-  let (_, returns) = List.fold_left helper (tc, false) b in
-  returns
+  List.fold_left helper (tc, false) b
 and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
   match s.elt with 
   | Assn (lhs_exp, rhs_exp) ->
     let lhs_ty = typecheck_exp tc lhs_exp in
     let rhs_ty = typecheck_exp tc rhs_exp in
     let lhsid = get_id lhs_exp in
-    (*print_endline @@ "lhs: " ^ Astlib.string_of_exp lhs_exp ^ ", rhs: " ^ Astlib.string_of_exp rhs_exp;
+    (*print_endline @@ "Assn:";
+    print_endline @@ "lhs: " ^ Astlib.string_of_exp lhs_exp ^ ", rhs: " ^ Astlib.string_of_exp rhs_exp;
     print_endline @@ "lhs: " ^ Astlib.string_of_ty lhs_ty ^ ", rhs: " ^ Astlib.string_of_ty rhs_ty;*)
     (*check if it has a local or global id*)
     if((lookup_local_option lhsid tc) = None && not(lookup_global_option lhsid tc = None && lookup_struct_option lhsid tc = None)) then 
@@ -346,9 +345,9 @@ and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * 
     | Some _ -> type_error s "Cannot redeclare local variable"
     | None -> 
       let exp_ty = typecheck_exp tc exp in
-      print_endline @@ "exp: " ^ Astlib.string_of_exp exp;
-
-      print_endline @@ "ty: " ^ Astlib.string_of_ty exp_ty;
+      (*print_endline @@ "Decl: ";
+      print_endline @@ "exp: " ^ Astlib.ml_string_of_exp exp;
+      print_endline @@ "ty: " ^ Astlib.string_of_ty exp_ty;*)
       add_local tc id exp_ty, false  
     end
   | Ret e -> begin match e, to_ret with
@@ -372,8 +371,8 @@ and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * 
     end
   | If (cond_exp, b1, b2) ->
     if (typecheck_exp tc cond_exp) = TBool then begin
-      let b1_r = typecheck_block tc b1 to_ret s in
-      let b2_r = typecheck_block tc b2 to_ret s in
+      let _,b1_r = typecheck_block tc b1 to_ret s in
+      let _,b2_r = typecheck_block tc b2 to_ret s in
       tc, b1_r && b2_r
     end
     else type_error s "Condition is not of type TBool in if-statement"
@@ -383,9 +382,9 @@ and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * 
       | TNullRef rhs_rty -> 
         if subtype_ref tc rhs_rty target_ty then
           let new_tctxt = add_local tc id rhs_ty in
-          let b1_r = typecheck_block new_tctxt b1 to_ret s in
-          let b2_r = typecheck_block new_tctxt b2 to_ret s in
-          tc, b1_r && b2_r
+          let tc1,b1_r = typecheck_block new_tctxt b1 to_ret s in
+          let tc2,b2_r = typecheck_block tc1 b2 to_ret s in
+          tc2, b1_r && b2_r
         else subtype_error s (TRef rhs_rty) (TRef target_ty)
       | _ -> type_error s "rhs is not ref?"
     end
@@ -435,7 +434,7 @@ let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
 
 let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
   let f_tc = List.fold_left (fun c -> fun (ty, id) -> add_local c id ty) tc f.args in
-  if typecheck_block f_tc f.body f.frtyp l then () else type_error l "Function does not return"
+  if snd @@ typecheck_block f_tc f.body f.frtyp l then () else type_error l "Function does not return"
 
 (* creating the typchecking context ----------------------------------------- *)
 

@@ -464,11 +464,15 @@ let typecheck_tests : suite = [
 ]
 let tc_err_tests_student = [
   "hw5programs/tc_null_array_err.oat"
-; "hw5programs/tc_array_err.oat"
-]
 
+]
+let tc_ok_tests_student = [
+  "hw5programs/tc_ifq1.oat"
+]
 let student_tests = [] 
-let student_tests_tc :suite = [GradedTest("extra tc err tests", 5, typecheck_file_error tc_err_tests_student);
+let student_tests_tc :suite = [
+  GradedTest("extra tc ok tests", 5, executed_tc_ok_file tc_ok_tests_student);
+  GradedTest("extra tc err tests", 5, typecheck_file_error tc_err_tests_student);
 ] 
 let hw5_tests : suite = [
   GradedTest("tc ok tests", 10, executed_tc_ok_file tc_ok_tests)
