@@ -196,7 +196,14 @@ let oat_alloc_array ct (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
    - make sure to calculate the correct amount of space to allocate!
 *)
 let oat_alloc_struct ct (id:Ast.id) : Ll.ty * operand * stream =
-  failwith "TODO: oat_alloc_struct"
+  let ans_id, struct_id = gensym "struct", gensym "raw_struct" in
+  let ans_ty = cmp_ty ct @@ TRef (RStruct id) in
+  let struct_ty = Ptr I64 in
+  let struct_size = List.length @@ TypeCtxt.lookup id ct in
+  ans_ty, Id ans_id, lift [
+    struct_id, Call(struct_ty, Gid "oat_malloc", [I64, Const (Int64.mul 8L @@ Int64.of_int struct_size)]);
+    ans_id, Bitcast(struct_ty, Id struct_id, ans_ty)
+  ]
 
 
 let str_arr_ty s = Array(1 + String.length s, I8)
@@ -344,9 +351,18 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
        - compile the initializer expression
        - store the resulting value into the structure
    *)
-  | Ast.CStruct (id, l) ->
-    failwith "TODO: Ast.CStruct"
-
+  | Ast.CStruct (id, args) ->
+    let struct_ty, struct_op, struct_stream = oat_alloc_struct tc id in
+    let helper = fun (arg_id, arg_exp) -> 
+      let arg_index = TypeCtxt.index_of_field id arg_id tc in
+      let arg_pointer = gensym "arg_pointer" in
+      let arg_exp_ty, arg_exp_op, arg_exp_stream = cmp_exp tc c arg_exp in
+      lift [
+        arg_pointer, Gep (struct_ty, struct_op, [Const 0L; Const (Int64.of_int arg_index)]);
+        "", Store (arg_exp_ty, arg_exp_op, Id arg_pointer)
+      ] >@ arg_exp_stream
+    in let arg_stream = List.map helper args |> List.flatten in
+    struct_ty, struct_op, struct_stream >@ arg_stream
   | Ast.Proj (e, id) ->
     let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
     let ans_id = gensym "proj" in
@@ -367,7 +383,17 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c:Ctxt.t) (e:exp node) : Ll.ty * Ll.operand *
      You will find the TypeCtxt.lookup_field_name function helpful.
   *)
   | Ast.Proj (e, i) ->
-    failwith "todo: Ast.Proj case of cmp_exp_lhs"
+    let exp_ty, exp_op, exp_stream = cmp_exp tc c e in
+    begin match exp_ty with
+    | Ptr (Namedt struct_id) -> 
+      let (field_type, field_index) = TypeCtxt.lookup_field_name struct_id i tc in
+      let actual_field_ty = cmp_ty tc field_type in
+      let field_ptr = gensym "field_ptr" in
+      actual_field_ty, Id field_ptr, 
+      exp_stream >@
+      [I (field_ptr, Gep (exp_ty, exp_op, [Const 0L; Const field_index]))]
+    | _ -> failwith @@ "invalid type for projection " ^ string_of_ty exp_ty
+    end
 
 
   (* ARRAY TASK: Modify this index code to call 'oat_assert_array_length' before doing the 
