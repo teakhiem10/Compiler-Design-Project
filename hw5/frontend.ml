@@ -28,6 +28,12 @@ let ( >@ ) x y = y @ x
 let ( >:: ) x y = y :: x
 let lift : (uid * insn) list -> stream = List.rev_map (fun (x,i) -> I (x,i))
 
+let rec list_insert (l:'a list) (i:int) (e:'a) = 
+  match i, l with
+  | _, [] -> []
+  | 0, _::xs -> e::xs
+  | _, x::xs -> x :: (list_insert xs (i-1) e)
+
 (* Build a CFG and collection of global variable definitions from a stream *)
 let cfg_of_stream (code:stream) : Ll.cfg * (Ll.gid * Ll.gdecl) list  =
     let gs, einsns, insns, term_opt, blks = List.fold_left
@@ -646,8 +652,15 @@ let rec cmp_gexp c (tc : TypeCtxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.
     (Ptr arr_t, GGid gid), (gid, (arr_t, arr_i))::gs
 
   (* STRUCT TASK: Complete this code that generates the global initializers for a struct value. *)  
-  | CStruct (id, cs) ->
-    failwith "todo: Cstruct case of cmp_gexp"
+  | CStruct (id, args) ->
+    let num_args = List.length args in
+    let helper = fun (elts, gs) (arg_id, arg_exp) -> 
+      let gd, gs' = cmp_gexp c tc arg_exp in
+      let index = TypeCtxt.index_of_field id arg_id tc in
+      list_insert elts index gd, gs @ gs'
+    in let elts, gs = List.fold_left helper ((List.init num_args (fun _ -> Void, GNull)), []) args in
+    let gid = gensym "global_struct" in
+    (Ptr (Namedt id), GGid gid), (gid, (Namedt id, GStruct elts))::gs
 
   | _ -> failwith "bad global initializer"
 
