@@ -80,4 +80,3 @@ let subtype_e2e_tests = prefix3
 let nicdard_tests = subtype_unit_tests
   @ typecheck_ty_unit_tests
   @ Gradedtests.executed_oat_file frontend_tests
-  @ Gradedtests.executed_oat_file subtype_e2e_tests

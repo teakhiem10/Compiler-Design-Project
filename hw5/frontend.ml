@@ -306,7 +306,7 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
     let ind_code = List.(fold_left add_elt [] @@ mapi (fun i e -> i, e) cs) in
     arr_ty, arr_op, alloc_code >@ ind_code
 
-  (* ARRAY TASK: Modify the compilation of the NewArr construct to implement the 
+  (* ARRAY TASK Done: Modify the compilation of the NewArr construct to implement the 
      initializer:
          - the initializer is a loop that uses id as the index
          - each iteration of the loop the code evaluates e2 and assigns it
@@ -383,9 +383,13 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c:Ctxt.t) (e:exp node) : Ll.ty * Ll.operand *
       | Ptr (Struct [_; Array (_,t)]) -> t 
       | _ -> failwith "Index: indexed into non pointer" in
     let ptr_id, tmp_id = gensym "index_ptr", gensym "tmp" in
+    let arr_bitcasted = gensym "bitcast_arr"in
+    let bitcast_instr : id * insn = (arr_bitcasted,Bitcast (arr_ty, arr_op, Ptr I64))in
+    let assert_call_stream : id * insn = ("",(Ll.Call (Void, Gid "oat_assert_array_length",[Ptr I64,Id arr_bitcasted; I64, ind_op])))in
+    let list_insn_stream  = lift [bitcast_instr; assert_call_stream] in
     ans_ty, (Id ptr_id),
-    arr_code >@ ind_code >@ lift
-      [ptr_id, Gep(arr_ty, arr_op, [i64_op_of_int 0; i64_op_of_int 1; ind_op]) ]
+    arr_code >@ ind_code >@ list_insn_stream >@ lift
+     [ptr_id, Gep(arr_ty, arr_op, [i64_op_of_int 0; i64_op_of_int 1; ind_op]) ]
 
    
 
