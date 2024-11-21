@@ -354,11 +354,14 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
   | Ast.CStruct (id, args) ->
     let struct_ty, struct_op, struct_stream = oat_alloc_struct tc id in
     let helper = fun (arg_id, arg_exp) -> 
-      let arg_index = TypeCtxt.index_of_field id arg_id tc in
+      let arg_ty, arg_index = TypeCtxt.lookup_field_name id arg_id tc in
+      let arg_ty_ll = cmp_ty tc arg_ty in
       let arg_pointer = gensym "arg_pointer" in
       let arg_exp_ty, arg_exp_op, arg_exp_stream = cmp_exp tc c arg_exp in
+      let tmp_arg_pointer = gensym "tmp_arg_pointer" in
       arg_exp_stream >@ lift [
-        arg_pointer, Gep (struct_ty, struct_op, [Const 0L; Const (Int64.of_int arg_index)]);
+        tmp_arg_pointer, Gep (struct_ty, struct_op, [Const 0L; Const arg_index]);
+        arg_pointer, Bitcast (Ptr arg_ty_ll, Id tmp_arg_pointer, Ptr arg_exp_ty);
         "", Store (arg_exp_ty, arg_exp_op, Id arg_pointer)
       ]
     in let arg_stream = List.map helper args |> List.flatten in
