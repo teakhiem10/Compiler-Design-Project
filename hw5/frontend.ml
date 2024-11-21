@@ -357,10 +357,10 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
       let arg_index = TypeCtxt.index_of_field id arg_id tc in
       let arg_pointer = gensym "arg_pointer" in
       let arg_exp_ty, arg_exp_op, arg_exp_stream = cmp_exp tc c arg_exp in
-      lift [
+      arg_exp_stream >@ lift [
         arg_pointer, Gep (struct_ty, struct_op, [Const 0L; Const (Int64.of_int arg_index)]);
         "", Store (arg_exp_ty, arg_exp_op, Id arg_pointer)
-      ] >@ arg_exp_stream
+      ]
     in let arg_stream = List.map helper args |> List.flatten in
     struct_ty, struct_op, struct_stream >@ arg_stream
   | Ast.Proj (e, id) ->
