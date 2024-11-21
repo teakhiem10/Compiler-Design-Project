@@ -317,20 +317,26 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
      compile that into LL code...
   *)
   | Ast.NewArr (elt_ty, e1, id, e2) ->    
-    let e1_ty, size_op, size_code = cmp_exp tc c e1 in
+    let _, size_op, size_code = cmp_exp tc c e1 in
     let arr_ty, arr_op, alloc_code = oat_alloc_array tc elt_ty size_op in
-    let e1_id = gensym "e1" in
-    let load_length_stream: stream = lift [e1_id,Alloca e1_ty;("",(Store (e1_ty,size_op,Id e1_id)))]in
-    let c1 = Ctxt.add c e1_id (arr_ty,arr_op) in
+    let e1_id = gensym "e_" in
+    let length_id = gensym "length" in  
+    let return_id = gensym "arr" in 
+    let load_arr_stream: stream = lift [e1_id, Alloca arr_ty;"",(Store (arr_ty, arr_op,Id e1_id))]in
+    let load_length_stream: stream = lift [length_id ,Alloca I64;("",(Store (I64,size_op,Id length_id)))]in
+    let load_stream = load_arr_stream >@ load_length_stream in
+
+    let c1 = Ctxt.add c e1_id ((Ptr arr_ty),Id e1_id) in
+    let c2 = Ctxt.add c1 length_id ((Ptr I64), Id length_id) in
     let for_decl: vdecl list = [(id, no_loc @@ CInt 0L)] in
-    let for_exp : exp node option = Some (no_loc @@ Bop (Lt, no_loc (Id id), no_loc @@ Id e1_id))in
+    let for_exp : exp node option = Some (no_loc @@ Bop (Lt, no_loc (Id id), no_loc @@ Id length_id)) in
     let for_add : exp node = no_loc @@ Bop (Add, no_loc (Id id), no_loc @@ CInt 1L) in
     let for_stmt : (stmt node) option = Some (no_loc @@ Assn ((no_loc @@ Id id),for_add)) in
     let assn_idx : exp node = no_loc @@ (Index (no_loc (Id e1_id),no_loc (Id id))) in
     let arr_assn_stmt : stmt node = no_loc @@ Assn (assn_idx, e2) in
     let for_arr: stmt node = no_loc @@ For (for_decl, for_exp, for_stmt, [arr_assn_stmt]) in
-    let (_, endstream) = cmp_stmt tc c1 e1_ty for_arr  in
-    arr_ty, arr_op, size_code >@ alloc_code >@ load_length_stream >@ endstream
+    let (_, forstream) = cmp_stmt tc c2 arr_ty for_arr  in
+    arr_ty, Id return_id, size_code >@ alloc_code >@ load_stream >@ forstream >@ [I (return_id, (Load (Ptr arr_ty, Id e1_id)))]
 
    (* STRUCT TASK: complete this code that compiles struct expressions.
       For each field component of the struct
