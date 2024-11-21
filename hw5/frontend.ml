@@ -201,7 +201,7 @@ let oat_alloc_struct ct (id:Ast.id) : Ll.ty * operand * stream =
   let struct_ty = Ptr I64 in
   let struct_size = List.length @@ TypeCtxt.lookup id ct in
   ans_ty, Id ans_id, lift [
-    struct_id, Call(struct_ty, Gid "oat_malloc", [I64, Const (Int64.of_int struct_size)]);
+    struct_id, Call(struct_ty, Gid "oat_malloc", [I64, Const (Int64.mul 8L @@ Int64.of_int struct_size)]);
     ans_id, Bitcast(struct_ty, Id struct_id, ans_ty)
   ]
 
@@ -383,7 +383,17 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c:Ctxt.t) (e:exp node) : Ll.ty * Ll.operand *
      You will find the TypeCtxt.lookup_field_name function helpful.
   *)
   | Ast.Proj (e, i) ->
-    failwith "todo: Ast.Proj case of cmp_exp_lhs"
+    let exp_ty, exp_op, exp_stream = cmp_exp tc c e in
+    begin match exp_ty with
+    | Ptr (Namedt struct_id) -> 
+      let (field_type, field_index) = TypeCtxt.lookup_field_name struct_id i tc in
+      let actual_field_ty = cmp_ty tc field_type in
+      let field_ptr = gensym "field_ptr" in
+      actual_field_ty, Id field_ptr, 
+      exp_stream >@
+      [I (field_ptr, Gep (exp_ty, exp_op, [Const 0L; Const field_index]))]
+    | _ -> failwith @@ "invalid type for projection " ^ string_of_ty exp_ty
+    end
 
 
   (* ARRAY TASK: Modify this index code to call 'oat_assert_array_length' before doing the 
