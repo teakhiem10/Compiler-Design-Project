@@ -308,14 +308,18 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
    - You will probably find it convenient to add a helper function that implements the 
      block typecheck rules.
 *)
-let rec get_id (e: Ast.exp node) : id = 
-  begin match e.elt with 
-                | Id i -> i
-                | Index (idarr,ind)-> get_id idarr
-                | Proj (id1,id2) -> get_id id1
-                  (* need to somehow rule out global functions here *)     
-                | _ -> type_error e "Invalid lhs of assignment"
-    end 
+
+let check_lhs (lhs_exp:exp node) (tc:Tctxt.t) (l: 'a Ast.node): unit =
+  match lhs_exp.elt with 
+  | Id id -> 
+    let global_opt = lookup_global_option id tc in
+    let local_opt = lookup_local_option id tc in
+    begin match global_opt, local_opt with 
+    | Some (TRef (RFun _)), None -> type_error l "lhs can't be a global function identifier"
+    | _ -> ()
+    end
+  | Index _ | Proj _ -> ()
+  | _ -> type_error l "Invalid lhs of assignment"
 
 let rec typecheck_block: 'a. Tctxt.t -> block -> ret_ty -> 'a Ast.node -> Tctxt.t * bool = 
   fun (tc : Tctxt.t) (b : block) (ret_ty:ret_ty) (l : 'a Ast.node) ->
@@ -331,13 +335,7 @@ and typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * 
   | Assn (lhs_exp, rhs_exp) ->
     let lhs_ty = typecheck_exp tc lhs_exp in
     let rhs_ty = typecheck_exp tc rhs_exp in
-    let lhsid = get_id lhs_exp in
-    (*print_endline @@ "Assn:";
-    print_endline @@ "lhs: " ^ Astlib.string_of_exp lhs_exp ^ ", rhs: " ^ Astlib.string_of_exp rhs_exp;
-    print_endline @@ "lhs: " ^ Astlib.string_of_ty lhs_ty ^ ", rhs: " ^ Astlib.string_of_ty rhs_ty;*)
-    (*check if it has a local or global id*)
-    if((lookup_local_option lhsid tc) = None && not(lookup_global_option lhsid tc = None && lookup_struct_option lhsid tc = None)) then 
-      type_error s @@ "lhs doesn't have local declaration and not global definition, lhs: " ^ (Astlib.string_of_exp lhs_exp);
+    check_lhs lhs_exp tc s;
     if subtype tc rhs_ty lhs_ty then tc, false 
     else type_error s @@ "rhs is not a subtype of lhs in assignment, lhs: " ^ (Astlib.string_of_ty lhs_ty) ^ ", rhs: " ^ (Astlib.string_of_ty rhs_ty)
   | Decl (id, exp) ->
