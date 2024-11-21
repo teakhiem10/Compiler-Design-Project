@@ -275,7 +275,7 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
      in
      let arr_ty = begin match exp_ty with
      | Ptr (Struct [I64; Array (_,ty)]) -> ty
-     | _ -> failwith "not an arraytype"
+     | _ -> failwith @@ "not an arraytype : " ^ Llutil.string_of_ty exp_ty
       end
      in
      let ptr_length = gensym "ptr_length" in
@@ -318,27 +318,19 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
   *)
   | Ast.NewArr (elt_ty, e1, id, e2) ->    
     let e1_ty, size_op, size_code = cmp_exp tc c e1 in
-    let e2_ty, e2_op, e2_stream = cmp_exp tc c e2 in
-    let e2_id = gensym "e2" in
-    let load_e2_stream: stream = [I (e2_id,(Load (e2_ty,e2_op)))]in
-    let c' = Ctxt.add c e2_id (e2_ty,e2_op) in
     let arr_ty, arr_op, alloc_code = oat_alloc_array tc elt_ty size_op in
-    let arr_id = match arr_op with
-                  | Id s -> s
-                  | Gid s -> s
-                  | _ -> failwith "arr shouldnt be null or Const"
-    in
-    let c'' = Ctxt.add c' arr_id (arr_ty,arr_op) in
+    let e1_id = gensym "e1" in
+    let load_length_stream: stream = lift [e1_id,Alloca e1_ty;("",(Store (e1_ty,size_op,Id e1_id)))]in
+    let c1 = Ctxt.add c e1_id (arr_ty,arr_op) in
     let for_decl: vdecl list = [(id, no_loc @@ CInt 0L)] in
-    let length_of_arr: exp node = no_loc @@ Length (no_loc @@ Id arr_id) in
-    let for_exp : exp node option = Some (no_loc @@ Bop (Lt, no_loc (Id id), length_of_arr))in (*TODO:length throws not found bug*)
+    let for_exp : exp node option = Some (no_loc @@ Bop (Lt, no_loc (Id id), no_loc @@ Id e1_id))in
     let for_add : exp node = no_loc @@ Bop (Add, no_loc (Id id), no_loc @@ CInt 1L) in
     let for_stmt : (stmt node) option = Some (no_loc @@ Assn ((no_loc @@ Id id),for_add)) in
-    let assn_idx : exp node = no_loc @@ (Index (no_loc (Id arr_id),no_loc (Id id))) in
-    let arr_ass_stmt : stmt node = no_loc @@ Assn (assn_idx, no_loc @@ Id e2_id) in
-    let for_arr: stmt node = no_loc @@ For (for_decl, for_exp, for_stmt , []) in
-    let (_, endstream) = cmp_stmt tc c'' e1_ty for_arr  in
-    arr_ty, arr_op, size_code >@ alloc_code
+    let assn_idx : exp node = no_loc @@ (Index (no_loc (Id e1_id),no_loc (Id id))) in
+    let arr_assn_stmt : stmt node = no_loc @@ Assn (assn_idx, e2) in
+    let for_arr: stmt node = no_loc @@ For (for_decl, for_exp, for_stmt, [arr_assn_stmt]) in
+    let (_, endstream) = cmp_stmt tc c1 e1_ty for_arr  in
+    arr_ty, arr_op, size_code >@ alloc_code >@ load_length_stream >@ endstream
 
    (* STRUCT TASK: complete this code that compiles struct expressions.
       For each field component of the struct
