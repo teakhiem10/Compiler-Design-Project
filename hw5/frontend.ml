@@ -497,16 +497,17 @@ and cmp_stmt (tc : TypeCtxt.t) (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt
          merge label after either block
   *)
   | Ast.Cast (typ, id, exp, notnull, null) ->
-    let e_ty, e_op, e_stream = cmp_exp tc c exp in
-    let c' = Ctxt.add c id (e_ty,e_op) in
-    let null_stream = cmp_block tc c rt null in
-    let nnull_stream = cmp_block tc c' rt notnull in
     let nnull_lbl = gensym "nnull" in
     let null_lbl = gensym "null" in
     let cmpr = gensym "comp_id" in
-    let cmpr_stream = lift [cmpr,Icmp (Ne, e_ty, e_op, Null)] in
+    let end_lbl = gensym "end" in
+    let e_ty, e_op, e_stream = cmp_exp tc c exp in
+    let c' = Ctxt.add c id (e_ty,e_op) in
+    let null_stream = [L null_lbl] >@ cmp_block tc c rt null >@ [T (Br end_lbl)] in
+    let nnull_stream = [L nnull_lbl] >@ lift [id,Alloca e_ty; "", Store (e_ty, e_op, Id id)] >@ cmp_block tc c' rt notnull >@ [T (Br end_lbl)]in
+    let cmpr_stream = lift [cmpr,Icmp (Ne, e_ty, e_op, Null)] >@ [T (Cbr (Id cmpr,nnull_lbl, null_lbl))] in
 
-    c,e_stream >@ cmpr_stream
+    c,e_stream >@ cmpr_stream >@ nnull_stream >@ null_stream >@ [L end_lbl]
 
   | Ast.While (guard, body) ->
      let guard_ty, guard_op, guard_code = cmp_exp tc c guard in
