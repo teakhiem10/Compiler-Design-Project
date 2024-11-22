@@ -497,7 +497,16 @@ and cmp_stmt (tc : TypeCtxt.t) (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt
          merge label after either block
   *)
   | Ast.Cast (typ, id, exp, notnull, null) ->
-    failwith "todo: implement Ast.Cast case"
+    let e_ty, e_op, e_stream = cmp_exp tc c exp in
+    let c' = Ctxt.add c id (e_ty,e_op) in
+    let null_stream = cmp_block tc c rt null in
+    let nnull_stream = cmp_block tc c' rt notnull in
+    let nnull_lbl = gensym "nnull" in
+    let null_lbl = gensym "null" in
+    let cmpr = gensym "comp_id" in
+    let cmpr_stream = lift [cmpr,Icmp (Ne, e_ty, e_op, Null)] in
+
+    c,e_stream >@ cmpr_stream
 
   | Ast.While (guard, body) ->
      let guard_ty, guard_op, guard_code = cmp_exp tc c guard in

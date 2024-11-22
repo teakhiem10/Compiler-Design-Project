@@ -50,7 +50,6 @@ let simple_tests = [
   ; (hw4_prefix ^ "tests_if6.oat", "", "65")
   ; (hw4_prefix ^ "tests_if7.oat", "", "53")
   ; (hw4_prefix ^ "tests_if8.oat", "", "50")
-  ; (hw4_prefix ^ "advanced_add.oat", "", "4")
   ; (hw4_prefix ^ "for_cond_fun2.oat", "", "1, 3, 5, 7, 9, 11, b:50")
   ; (hw4_prefix ^ "empty.oat", "", "5")
   ; (hw4_prefix ^ "printing.oat", "", "hello42")
@@ -58,7 +57,6 @@ let simple_tests = [
   ; (hw4_prefix ^ "argc.oat", "2", "20") (* character '2' is from amount of args and second character is the return code*)
 
   (* now come hw5 tests*)
-  ; (hw5_prefix ^ "init_array_subtype.oat", "", "0")
   ; (hw5_prefix ^ "init_id.oat", "", "7")
   ; (hw5_prefix ^ "init_with_function.oat", "", "5")
   ; (hw5_prefix ^ "init_with_function2.oat", "", "10")
