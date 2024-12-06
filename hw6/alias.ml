@@ -34,7 +34,27 @@ type fact = SymPtr.t UidM.t
 
  *)
 let insn_flow ((u,i):uid * insn) (d:fact) : fact =
-  failwith "Alias.insn_flow unimplemented"
+  match i with 
+  | Alloca _ -> UidM.update (fun _ -> SymPtr.Unique) u d
+  | Load _ | Call _ |  Bitcast _ | Gep _ | Store _-> 
+    let returnUpdatedFact = begin match i with
+    | Store _  -> d
+    | _ -> UidM.update (fun _ -> SymPtr.MayAlias) u d
+    end in
+    begin match i with
+    | Load _ -> returnUpdatedFact
+    | _ ->
+      let args = begin match i with
+      | Call (_, _, opList) -> opList
+      | Bitcast (ty, op, _) | Gep (ty, op, _) | Store (ty, op, _) -> [ty, op]
+      end in
+      let helper = fun fact (ty, op) -> begin match ty, op with 
+      | Ptr _, Id uid -> UidM.update (fun _ -> SymPtr.MayAlias) uid fact
+      | _ -> fact
+      end in
+      List.fold_left helper returnUpdatedFact args
+    end
+  | _ -> d
 
 
 (* The flow function across terminators is trivial: they never change alias info *)
@@ -69,7 +89,19 @@ module Fact =
        join of two SymPtr.t facts.
     *)
     let combine (ds:fact list) : fact =
-      failwith "Alias.Fact.combine not implemented"
+      let aliasCombiner (_:UidM.key) (m1_opt : SymPtr.t option) (m2_opt : SymPtr.t option) : SymPtr.t option = 
+        begin match m1_opt, m2_opt with
+        | Some m1, Some m2 -> 
+            begin match m1, m2 with
+            | SymPtr.MayAlias, _ | _, SymPtr.MayAlias -> Some SymPtr.MayAlias
+            | SymPtr.Unique, _ | _, SymPtr.Unique -> Some SymPtr.Unique
+            | _, _ -> Some SymPtr.UndefAlias
+            end
+        | Some m, _ | _, Some m -> Some m
+        | _, _ -> None
+      end
+      in
+    List.fold_left (fun f1 f2 _-> UidM.merge aliasCombiner f1 f2) (UidM.empty) ds
   end
 
 (* instantiate the general framework ---------------------------------------- *)
