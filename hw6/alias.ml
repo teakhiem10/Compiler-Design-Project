@@ -35,11 +35,11 @@ type fact = SymPtr.t UidM.t
  *)
 let insn_flow ((u,i):uid * insn) (d:fact) : fact =
   match i with 
-  | Alloca _ -> UidM.update (fun _ -> SymPtr.Unique) u d
+  | Alloca _ -> UidM.update_or SymPtr.Unique (fun _ -> SymPtr.Unique) u d
   | Load _ | Call _ |  Bitcast _ | Gep _ | Store _-> 
     let returnUpdatedFact = begin match i with
     | Store _  -> d
-    | _ -> UidM.update (fun _ -> SymPtr.MayAlias) u d
+    | _ -> UidM.update_or SymPtr.MayAlias (fun _ -> SymPtr.MayAlias) u d
     end in
     begin match i with
     | Load _ -> returnUpdatedFact
@@ -49,7 +49,7 @@ let insn_flow ((u,i):uid * insn) (d:fact) : fact =
       | Bitcast (ty, op, _) | Gep (ty, op, _) | Store (ty, op, _) -> [ty, op]
       end in
       let helper = fun fact (ty, op) -> begin match ty, op with 
-      | Ptr _, Id uid -> UidM.update (fun _ -> SymPtr.MayAlias) uid fact
+      | Ptr _, Id uid -> UidM.update_or SymPtr.MayAlias (fun _ -> SymPtr.MayAlias) uid fact
       | _ -> fact
       end in
       List.fold_left helper returnUpdatedFact args
@@ -101,7 +101,9 @@ module Fact =
         | _, _ -> None
         end 
       in
-      List.fold_left (fun f1 f2 -> UidM.merge aliasCombiner f1 f2) (UidM.empty) ds
+      print_endline "Trying to combine";
+      let result = List.fold_left (fun f1 f2 -> UidM.merge aliasCombiner f1 f2) (UidM.empty) ds in
+      print_endline "Combined"; result
   end
 
 (* instantiate the general framework ---------------------------------------- *)
