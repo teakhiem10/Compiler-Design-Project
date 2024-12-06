@@ -99,9 +99,9 @@ module Fact =
             end
         | Some m, _ | _, Some m -> Some m
         | _, _ -> None
-      end
+        end 
       in
-    List.fold_left (fun f1 f2 _-> UidM.merge aliasCombiner f1 f2) (UidM.empty) ds
+      List.fold_left (fun f1 f2 -> UidM.merge aliasCombiner f1 f2) (UidM.empty) ds
   end
 
 (* instantiate the general framework ---------------------------------------- *)
