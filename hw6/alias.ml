@@ -38,8 +38,9 @@ let insn_flow ((u,i):uid * insn) (d:fact) : fact =
   | Alloca _ -> UidM.update_or SymPtr.Unique (fun _ -> SymPtr.Unique) u d
   | Load _ | Call _ |  Bitcast _ | Gep _ | Store _-> 
     let returnUpdatedFact = begin match i with
-    | Store _  -> d
-    | _ -> UidM.update_or SymPtr.MayAlias (fun _ -> SymPtr.MayAlias) u d
+    | Load (Ptr Ptr _, _) | Call (Ptr _, _, _) | Bitcast (_, _, Ptr _) | Gep (Ptr _, _, _)  -> 
+      UidM.update_or SymPtr.MayAlias (fun _ -> SymPtr.MayAlias) u d
+    | _ -> d
     end in
     begin match i with
     | Load _ -> returnUpdatedFact
