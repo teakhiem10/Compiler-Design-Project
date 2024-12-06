@@ -88,6 +88,26 @@ module Make (Fact : FACT) (Graph : DFA_GRAPH with type fact := Fact.t) =
   struct
 
     let solve (g:Graph.t) : Graph.t =
-      failwith "TODO HW6: Solver.solve unimplemented"
+      let helper (nodeSet, graph : (Graph.NodeS.t * Graph.t)) : (Graph.NodeS.t * Graph.t) = 
+        if Graph.NodeS.is_empty nodeSet then (nodeSet, graph) else
+        let n = Graph.NodeS.choose nodeSet in
+        let remainingNodes = Graph.NodeS.remove n nodeSet in
+        let old_out = Graph.out graph n in
+        let pred_facts = List.map (Graph.out graph) (Graph.NodeS.elements (Graph.preds graph n)) in
+        let in_fact = Fact.combine pred_facts in
+        let out_fact = Graph.flow graph n in_fact in
+        let new_graph = Graph.add_fact n out_fact graph in
+        let newNodeSet = 
+          if Fact.compare old_out (Graph.out new_graph n) = 0 then remainingNodes 
+          else let succs = Graph.succs new_graph n in 
+            Graph.NodeS.union remainingNodes succs in
+        (newNodeSet, new_graph)
+      in
+      let rec iterator (nodeSet, graph : (Graph.NodeS.t * Graph.t)) : Graph.t = 
+        if Graph.NodeS.is_empty nodeSet then graph else
+          iterator (helper (nodeSet, graph))
+      in
+      let allNodes = Graph.nodes g in
+      iterator (allNodes, g)
   end
 
