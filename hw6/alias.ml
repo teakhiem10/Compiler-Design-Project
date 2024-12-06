@@ -101,9 +101,7 @@ module Fact =
         | _, _ -> None
         end 
       in
-      print_endline "Trying to combine";
-      let result = List.fold_left (fun f1 f2 -> UidM.merge aliasCombiner f1 f2) (UidM.empty) ds in
-      print_endline "Combined"; result
+      List.fold_left (fun f1 f2 -> UidM.merge aliasCombiner f1 f2) (UidM.empty) ds
   end
 
 (* instantiate the general framework ---------------------------------------- *)
