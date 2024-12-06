@@ -1,4 +1,4 @@
-(** Dead Code Elimination  *)
+  (** Dead Code Elimination  *)
 open Ll
 open Datastructures
 
@@ -24,7 +24,28 @@ open Datastructures
 let dce_block (lb:uid -> Liveness.Fact.t) 
               (ab:uid -> Alias.fact)
               (b:Ll.block) : Ll.block =
-  failwith "Dce.dce_block unimplemented"
+    let helper (uid,insn : Ll.uid * Ll.insn) : bool = 
+      let liveness_set = lb uid in
+      let alias_map = ab uid in
+      begin match insn with 
+      | Call _ -> true
+      | Store (_, _, dst) -> 
+        begin match dst with 
+        | Id u -> 
+          let aliasing = UidM.find_opt u alias_map in
+          let aliased = begin match aliasing with 
+          | Some Alias.SymPtr.MayAlias -> true
+          | _ -> false
+          end
+          in
+          let live = UidS.mem u liveness_set in
+          live || aliased
+        | _ -> true
+        end
+      | _ -> UidS.mem uid liveness_set
+      end 
+    in
+    {insns=List.filter helper b.insns; term=b.term}
 
 let run (lg:Liveness.Graph.t) (ag:Alias.Graph.t) (cfg:Cfg.t) : Cfg.t =
 
