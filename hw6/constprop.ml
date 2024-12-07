@@ -27,7 +27,16 @@ module SymConst =
    to integer constants *)
 type fact = SymConst.t UidM.t
 
-
+let get_op (op:Ll.operand) (d:fact) : Ll.operand =
+  begin match op with
+  | Id id | Gid id -> 
+    let op_res = UidM.find_opt id d in
+    begin match op_res with
+    | Some (SymConst.Const a) -> Ll.Const a
+    | _ -> op
+    end
+  | _ -> op
+  end
 
 (* flow function across Ll instructions ------------------------------------- *)
 (* - Uid of a binop or icmp with const arguments is constant-out
@@ -37,8 +46,64 @@ type fact = SymConst.t UidM.t
    - Uid of all other instructions are NonConst-out
  *)
 let insn_flow (u,i:uid * insn) (d:fact) : fact =
-  failwith "Constprop.insn_flow unimplemented"
-
+  begin match i with
+  | Binop (biop,t,op1,op2) -> let new_op1 = get_op op1 d in
+                              let new_op2 = get_op op2 d in
+                              begin match new_op1 with
+                              | Const val1 -> 
+                                begin match new_op2 with
+                                | Const val2 ->
+                                  let new_val = 
+                                    begin match biop with
+                                    | Add -> Int64.add val1 val2
+                                    | Sub -> Int64.sub val1 val2
+                                    | Mul -> Int64.mul val1 val2
+                                    | Shl -> Int64.shift_left val1 (Int64.to_int val2)
+                                    | Lshr -> Int64.shift_right_logical val1 (Int64.to_int val2)
+                                    | Ashr -> Int64.shift_right val1 (Int64.to_int val2)
+                                    | And -> Int64.logand val1 val2
+                                    | Or -> Int64.logor val1 val2
+                                    | Xor -> Int64.logxor val1 val2 
+                                    end
+                                  in
+                                  UidM.add u (SymConst.Const new_val) d
+                                | _ -> UidM.add u SymConst.NonConst d
+                                end
+                              | _ -> UidM.add u SymConst.NonConst d
+                              end
+  | Icmp (cnd,t,op1,op2)-> let op1 = get_op op1 d in
+                          let op2 = get_op op2 d in
+                          begin match op1 with
+                          | Const val1 -> 
+                            begin match op2 with
+                            | Const val2 -> 
+                              let new_val = 
+                                begin match cnd with
+                                | Eq -> val1 = val2
+                                | Ne -> not(val1 = val2)
+                                | Slt -> val1 < val2
+                                | Sle -> val1 <= val2
+                                | Sgt -> val1 > val2
+                                | Sge -> val1 >= val2
+                                end
+                              in
+                              UidM.add u (SymConst.Const (if new_val then 1L else 0L)) d
+                            | _ -> UidM.add u SymConst.NonConst d
+                            end
+                          | _ -> UidM.add u SymConst.NonConst d
+                          end
+  | Call (t,_,_) -> 
+    begin match t with
+    | Void -> UidM.add u SymConst.UndefConst d
+    | _ -> UidM.add u SymConst.NonConst d
+    end
+  | Store (t,_,_) -> begin match t with
+                    | Void -> UidM.add u SymConst.UndefConst d
+                    | _ -> d
+                    end
+  | Alloca _ | Load _ | Bitcast _ | Gep _ -> UidM.add u SymConst.NonConst d
+  | _ -> failwith "insflow not fully implemented"
+  end
 (* The flow function across terminators is trivial: they never change const info *)
 let terminator_flow (t:terminator) (d:fact) : fact = d
 
@@ -63,7 +128,20 @@ module Fact =
     (* The constprop analysis should take the meet over predecessors to compute the
        flow into a node. You may find the UidM.merge function useful *)
     let combine (ds:fact list) : fact = 
-      failwith "Constprop.Fact.combine unimplemented"
+      let helper1 (a: SymConst.t) (b: SymConst.t) : SymConst.t =
+        match a, b with
+        | (Const a, _) | (_, Const a) -> Const a
+        | _ -> NonConst
+      in
+      let helper2 (u:uid) (a:'a option) (b:'b option) =
+        begin match a,b with
+        | Some var, None | None, Some var-> Some var
+        | Some var1, Some var2 -> Some (helper1 var1 var2)
+        | None, None -> None
+        end
+      in
+      let merge (uidm1: 'a UidM.t) (uidm2: 'b UidM.t)= UidM.merge helper2 uidm1 uidm2 in
+      List.fold_left merge UidM.empty ds
   end
 
 (* instantiate the general framework ---------------------------------------- *)
