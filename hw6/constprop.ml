@@ -169,7 +169,9 @@ let get_op_block (id:uid) (d:fact) : Ll.operand =
   | Some (SymConst.Const value) -> Const value
   | _ -> Id id
 
-let ins_helper (uid : uid) (t : terminator) (cb : uid -> Fact.t) ((id,insn) : Ll.uid * Ll.insn) : (uid * Ll.insn) = 
+
+  
+let instr_helper (cb : uid -> Fact.t) ((id,insn) : Ll.uid * Ll.insn) : (uid * Ll.insn) = 
   let new_ins =
   begin match insn with
   | Binop (bop, ty, Id id1, Id id2) -> Binop(bop, ty, get_op_block id1 (cb id), get_op_block id2 (cb id))
@@ -190,6 +192,13 @@ let ins_helper (uid : uid) (t : terminator) (cb : uid -> Fact.t) ((id,insn) : Ll
   | _ -> insn
   end
   in (id, new_ins)
+
+  let t_helper  (id:uid) (term:terminator) (cb : uid -> Fact.t) : Ll.terminator =
+  begin match term with
+  | Ret (t, Some (Id i)) -> Ret (t, Some (get_op_block i (cb id)))
+  | Cbr (Id i, lbl_1, lbl_2) -> Cbr(get_op_block i (cb id), lbl_1, lbl_2)
+  | _ -> term
+  end
 (* run constant propagation on a cfg given analysis results ----------------- *)
 (* HINT: your cp_block implementation will probably rely on several helper 
    functions.                                                                 *)
@@ -200,8 +209,8 @@ let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
   let cp_block (l:Ll.lbl) (cfg:Cfg.t) : Cfg.t =
     let b = Cfg.block cfg l in
     let cb = Graph.uid_out cg l in
-    let tuid,termin = b.term in
-    Cfg.add_block  l 
+    let tuid,term = b.term in
+    Cfg.add_block  l {insns = List.map (instr_helper cb) b.insns ; term = (tuid,t_helper tuid term cb)} cfg
   in
 
   LblS.fold cp_block (Cfg.nodes cfg) cfg
