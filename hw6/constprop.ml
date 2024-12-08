@@ -163,7 +163,33 @@ let analyze (g:Cfg.t) : Graph.t =
   let fg = Graph.of_cfg init cp_in g in
   Solver.solve fg
 
+let get_op_block (id:uid) (d:fact) : Ll.operand =
+  let op = UidM.find_opt id d in
+  match op with
+  | Some (SymConst.Const value) -> Const value
+  | _ -> Id id
 
+let ins_helper (uid : uid) (t : terminator) (cb : uid -> Fact.t) ((id,insn) : Ll.uid * Ll.insn) : (uid * Ll.insn) = 
+  let new_ins =
+  begin match insn with
+  | Binop (bop, ty, Id id1, Id id2) -> Binop(bop, ty, get_op_block id1 (cb id), get_op_block id2 (cb id))
+  | Binop (bop, ty, Id id1, op2) -> Binop(bop, ty, get_op_block id1 (cb id), op2)
+  | Binop (bop, ty, op1, Id id2) -> Binop(bop, ty, op1, get_op_block id2 (cb id))
+  | Call (ty, op, ops) -> 
+    let help ((t:ty), (o:operand)) = begin match o with
+                                  | Id id1 -> (t, get_op_block id1 (cb id))
+                                  | _ -> (t, o)
+                                end 
+    in
+    Call (ty, op, List.map help ops)
+  | Bitcast (ty1, Id id1, ty2) -> Bitcast (ty1, get_op_block id1 (cb id), ty2)
+  | Store (ty, Id id1, op) -> Store (ty, get_op_block id1 (cb id), op)
+  | Icmp (cnd, ty, Id id1, Id id2) -> Icmp (cnd, ty, get_op_block id1 (cb id), get_op_block id2 (cb id))
+  | Icmp (cnd, ty, Id id1, op2) -> Icmp (cnd, ty, get_op_block id1 (cb id), op2)
+  | Icmp (cnd, ty, op1, Id id2) -> Icmp (cnd, ty, op1, get_op_block id2 (cb id))
+  | _ -> insn
+  end
+  in (id, new_ins)
 (* run constant propagation on a cfg given analysis results ----------------- *)
 (* HINT: your cp_block implementation will probably rely on several helper 
    functions.                                                                 *)
@@ -174,7 +200,8 @@ let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
   let cp_block (l:Ll.lbl) (cfg:Cfg.t) : Cfg.t =
     let b = Cfg.block cfg l in
     let cb = Graph.uid_out cg l in
-    failwith "Constprop.cp_block unimplemented"
+    let tuid,termin = b.term in
+    Cfg.add_block  l 
   in
 
   LblS.fold cp_block (Cfg.nodes cfg) cfg
