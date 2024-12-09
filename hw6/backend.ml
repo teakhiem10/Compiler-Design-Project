@@ -2,6 +2,8 @@
 open Ll
 open Llutil
 open X86
+open Datastructures
+
 
 
 (* allocated llvmlite function bodies --------------------------------------- *)
@@ -740,6 +742,11 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
 *)
 
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
+  let get_uidset (t:UidSet.t) ((id:uid),(instr:insn)) : UidSet.t = if (insn_assigns instr) 
+                                                    then UidS.add id t 
+                                                    else t 
+  in
+  let b_uid (b:block) = List.fold_left get_uidset UidS.empty b.insns in 
   failwith "Backend.better_layout not implemented"
 
 
