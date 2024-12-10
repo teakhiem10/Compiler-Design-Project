@@ -748,15 +748,26 @@ let pal = LocSet.(caller_save
                   |> remove (Alloc.LReg Rcx)                       
                   )
 
-type graph_node = {id : uid; neigh : UidSet.t; color: int option}
+let num_registers = LocSet.cardinal pal
 
-let string_of_node ({id; neigh; _} : graph_node) : string = Printf.sprintf "{id=%s; neigh=%s;}" id (UidSet.to_string neigh)
+type graph_node = {id : uid; neigh : UidSet.t; deg: int option; color: int option}
+type graph = graph_node list
 
-let string_of_graph (g: graph_node list) : string = List.map string_of_node g |> String.concat "\n"
+let extract_node (uid:uid) (g:graph) : (graph_node * graph) = 
+  let filter_f = fun {id;_} -> id = uid in
+  List.find filter_f g, List.filter (fun x -> not (filter_f x)) g
 
-let empty_node (id: uid)= {id=id; neigh=UidSet.empty; color=None}
+let remove_node_and_edges (uid:uid) (g:graph) : graph = 
+  let _, new_graph = extract_node uid g in
+  List.map (fun {id; neigh; deg; color} -> let new_neigh = UidSet.filter (fun i -> not (i = uid)) neigh in 
+  {id=id; neigh=new_neigh; deg=Option.map (fun i -> if UidSet.mem id new_neigh then i-1 else i) deg ; color=color}) new_graph
+let string_of_node ({id; neigh; deg; color} : graph_node) : string = let default = -1 in Printf.sprintf "{id=%s; neigh=%s; deg=%d; color=%d;}" id (UidSet.to_string neigh) (Option.value deg ~default) (Option.value color ~default)
 
-let find_node (id: uid) (g: graph_node list) : graph_node option = List.find_opt (fun n -> n.id = id) g
+let string_of_graph (g: graph) : string = List.map string_of_node g |> String.concat "\n"
+
+let empty_node (id: uid)= {id=id; neigh=UidSet.empty; deg=None; color=None}
+
+let find_node (id: uid) (g: graph) : graph_node option = List.find_opt (fun n -> n.id = id) g
 let b_uid (b:block) = 
   let get_uidset (t:UidSet.t) ((id:uid),(instr:insn)) : UidSet.t = if (insn_assigns instr)
   then UidS.add id t 
@@ -764,7 +775,7 @@ let b_uid (b:block) =
 in 
 List.fold_left get_uidset UidS.empty b.insns
 
-let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph_node list =
+let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph =
   let arg_uids = UidSet.of_list f.f_param in
   let entry, rest = f.f_cfg in
   let entry_uids = b_uid entry in
@@ -783,16 +794,58 @@ let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph_node list =
       | Some n -> n
       end in
       let tmp_g = List.filter (fun n -> not (n.id = i)) g in
-      let new_node = {id=i; neigh=UidSet.union node.neigh live_uids; color=None} in
+      let new_node = {id=i; neigh=UidSet.union node.neigh live_uids; deg=None; color=None} in
       List.append tmp_g [new_node]) live_uids g
     ) (List.map empty_node uid_list) f_locations in
 
-    List.map (fun {id; neigh; color} -> {id=id; neigh = UidSet.remove id neigh; color=color}) interference_graph
+  let complete_graph = List.map 
+    (fun {id; neigh;_} -> 
+      let new_neigh = UidSet.remove id neigh in {id=id; neigh = new_neigh; deg=Some (UidSet.cardinal new_neigh); color=None}) 
+    interference_graph in
+  complete_graph
+
+let precolor_graph (g:graph) (f:Ll.fdecl) : graph = 
+  let arg_uids = f.f_param in
+    fst @@ List.fold_left (fun (gr, index) id -> 
+      let n, tmp_g = extract_node id gr in 
+      let clr = if index > 5 then None else Some index in 
+      let new_node = {id=id; neigh=n.neigh; deg=None; color=clr} in
+      (List.append tmp_g [new_node]), index + 1) 
+    (g, 0) arg_uids
     
+let rec color_graph (g:graph) (num_clrs:int) : graph option = 
+  let potential_cuts = List.filter (fun n -> Option.is_some n.deg && Option.get n.deg < num_clrs) g in
+  begin match potential_cuts with
+  | [] -> None  
+  | cut :: _ -> 
+    print_endline @@ string_of_node cut;
+    let new_graph = remove_node_and_edges cut.id g in
+    print_endline @@ (string_of_graph new_graph) ^ "\n";
+    let clr_graph = color_graph new_graph (num_clrs - 1 ) in
+    begin match clr_graph with
+    | None -> None
+    | Some graph -> Some (List.map (fun {id; neigh; deg; _} -> 
+      let n = find_node id graph in
+      begin match n with
+      | None -> {id=id; neigh=neigh; deg=deg; color=Some num_clrs}
+      | Some {color;_} -> {id=id; neigh=neigh; deg=deg; color=color}
+      end) g)
+      
+    end
+  end
+
+
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   let interference_graph = graph_of_fdecl f live in
-  print_endline @@ string_of_graph interference_graph;
-  failwith "Backend.better_layout not implemented"
+  let precolored_graph = precolor_graph interference_graph f in
+  print_endline @@ string_of_graph precolored_graph;
+  print_endline "";
+  let colored_graph = color_graph precolored_graph num_registers in
+  begin match colored_graph with
+  | None -> failwith "Could not color graph"
+  | Some g-> 
+    failwith "Backend.better_layout not implemented"
+  end
 
 
 
