@@ -782,7 +782,7 @@ let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph_node list =
       | None -> empty_node i
       | Some n -> n
       end in
-      let tmp_g = List.filter (fun n -> n.id != i) g in
+      let tmp_g = List.filter (fun n -> not (n.id = i)) g in
       let new_node = {id=i; neigh=UidSet.union node.neigh live_uids; color=None} in
       List.append tmp_g [new_node]) live_uids g
     ) (List.map empty_node uid_list) f_locations in
