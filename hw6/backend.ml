@@ -759,8 +759,15 @@ let extract_node (uid:uid) (g:graph) : (graph_node * graph) =
 
 let remove_node_and_edges (uid:uid) (g:graph) : graph = 
   let _, new_graph = extract_node uid g in
-  List.map (fun {id; neigh; deg; color} -> let new_neigh = UidSet.filter (fun i -> not (i = uid)) neigh in 
-  {id=id; neigh=new_neigh; deg=Option.map (fun i -> if UidSet.mem id new_neigh then i-1 else i) deg ; color=color}) new_graph
+  List.map (fun {id; neigh; deg; color} -> 
+    let new_neigh = UidSet.filter (fun i -> not (i = uid)) neigh in 
+    {
+      id=id; 
+      neigh=new_neigh; 
+      deg=Option.map (fun _ -> UidSet.cardinal new_neigh) deg; 
+      color=color
+    }) 
+  new_graph
 let string_of_node ({id; neigh; deg; color} : graph_node) : string = let default = -1 in Printf.sprintf "{id=%s; neigh=%s; deg=%d; color=%d;}" id (UidSet.to_string neigh) (Option.value deg ~default) (Option.value color ~default)
 
 let string_of_graph (g: graph) : string = List.map string_of_node g |> String.concat "\n"
@@ -816,20 +823,32 @@ let precolor_graph (g:graph) (f:Ll.fdecl) : graph =
 let rec color_graph (g:graph) (num_clrs:int) : graph option = 
   let potential_cuts = List.filter (fun n -> Option.is_some n.deg && Option.get n.deg < num_clrs) g in
   begin match potential_cuts with
-  | [] -> None  
+  | [] -> if (Option.is_none (List.find_opt (fun n -> Option.is_none n.color) g)) 
+    then Some g else (None)
   | cut :: _ -> 
-    print_endline @@ string_of_node cut;
+    (*print_endline @@ string_of_node cut;*)
     let new_graph = remove_node_and_edges cut.id g in
-    print_endline @@ (string_of_graph new_graph) ^ "\n";
-    let clr_graph = color_graph new_graph (num_clrs - 1 ) in
+    (*print_endline @@ (string_of_graph new_graph) ^ "\n";*)
+    let clr_graph = color_graph new_graph (num_clrs) in
     begin match clr_graph with
     | None -> None
-    | Some graph -> Some (List.map (fun {id; neigh; deg; _} -> 
-      let n = find_node id graph in
-      begin match n with
-      | None -> {id=id; neigh=neigh; deg=deg; color=Some num_clrs}
-      | Some {color;_} -> {id=id; neigh=neigh; deg=deg; color=color}
-      end) g)
+    | Some graph -> 
+      let used_colors = UidSet.fold (fun neigh_id clrs -> 
+        begin match find_node neigh_id graph with 
+        | None -> clrs 
+        | Some node -> 
+          if Option.is_some node.color then (Option.get node.color) :: clrs 
+          else clrs end) 
+        cut.neigh [] in
+      let rec find_free_color c =
+        if List.mem c used_colors then find_free_color (c + 1) else c
+      in
+      let node_color = find_free_color 0 in
+      (*print_endline cut.id;
+      print_endline (string_of_int node_color);
+      print_endline @@ string_of_graph graph;*)
+
+      Some ({id=cut.id; neigh=cut.neigh; deg=cut.deg; color=Some node_color} :: graph)
       
     end
   end
@@ -838,12 +857,12 @@ let rec color_graph (g:graph) (num_clrs:int) : graph option =
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   let interference_graph = graph_of_fdecl f live in
   let precolored_graph = precolor_graph interference_graph f in
-  print_endline @@ string_of_graph precolored_graph;
-  print_endline "";
+  (*print_endline @@ string_of_graph precolored_graph;
+  print_endline "";*)
   let colored_graph = color_graph precolored_graph num_registers in
   begin match colored_graph with
   | None -> failwith "Could not color graph"
-  | Some g-> 
+  | Some g-> print_endline @@ string_of_graph g;
     failwith "Backend.better_layout not implemented"
   end
 
