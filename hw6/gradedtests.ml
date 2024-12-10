@@ -537,6 +537,29 @@ let tests : suite =
   Test("oat regalloc correctness tests", pass_all_executed_oat_file (oat_correctness_tests @ regalloc_challenge_tests));
   GradedTest("oat regalloc quality tests", 35, quality_oat oat_regalloc_quality_tests);
 ]
+let binop_tests_manual =
+  [ "llprograms/add.ll", "14"
+  (*; "llprograms/sub.ll", "1"
+  ; "llprograms/mul.ll", "45"
+  ; "llprograms/and.ll", "0"
+  ; "llprograms/or.ll",  "1"
+  ; "llprograms/xor.ll", "0"
+  ; "llprograms/shl.ll", "168"
+  ; "llprograms/lshr.ll", "10"
+  ; "llprograms/ashr.ll", "5" *)]
+
+let indie_test=
+  binop_tests_manual
+
+let tests_mine : suite =
+  [
+  GradedTest("solver / liveness analysis tests", 10, dfa_liveness_file liveness_analysis_tests);
+  GradedTest("alias analysis tests", 15, dfa_alias_file alias_analysis_tests);
+  GradedTest("dce optimization tests", 15, opt_dce_file dce_opt_tests);
+  GradedTest("constprop analysis tests", 15, dfa_constprop_file constprop_analysis_tests);
+  GradedTest("constprop optimization tests", 10, opt_constfold_file constprop_opt_tests);
+  Test("ll regalloc correctness tests", pass_all_executed_ll_file indie_test);
+]
 
 let graded_tests : suite =
-  tests
+  tests_mine
