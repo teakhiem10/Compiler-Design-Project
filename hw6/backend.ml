@@ -855,6 +855,12 @@ let rec color_graph (g:graph) (num_clrs:int) : graph option =
       end
     end
 
+let rec color_graph_init (g:graph) (num_clrs:int) : graph = 
+  let colored_graph = color_graph g num_clrs in
+  match colored_graph with
+  | None -> color_graph_init g (num_clrs + 1)
+  | Some graph -> graph
+
 let assign_loc (g:graph) : ((lbl * Alloc.loc) list) * int ref =
   let n_spill = ref 0 in
   let spill () = (incr n_spill; Alloc.LStk (- !n_spill)) in
@@ -877,15 +883,13 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   let precolored_graph = interference_graph(*precolor_graph interference_graph f*) in
   (*print_endline @@ string_of_graph precolored_graph;
   print_endline "";*)
-  let colored_graph = color_graph precolored_graph num_registers in
-  begin match colored_graph with
-    | None -> failwith "Could not color graph"
-    | Some g-> (*print_endline @@ string_of_graph g; *)let result,sp = assign_loc g in
-      {
-        uid_loc = (fun x -> try List.assoc x result with Not_found -> LLbl x);
-        spill_bytes = 8 * !sp
-      }
-  end
+  let colored_graph = color_graph_init precolored_graph num_registers in  
+  (*print_endline @@ string_of_graph g; *)
+  let result,sp = assign_loc colored_graph in
+    {
+      uid_loc = (fun x -> try List.assoc x result with Not_found -> LLbl x);
+      spill_bytes = 8 * !sp
+    }
 
 
 
