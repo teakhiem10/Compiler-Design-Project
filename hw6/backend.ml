@@ -743,12 +743,14 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
 
 
 (* The available palette of registers.  Excludes Rax and Rcx and R15 *)
-let c_loc_table : (int * Alloc.loc) list= List.mapi (fun i reg -> (i, Alloc.LReg reg)) 
-    [Rbx;Rdx;Rsi;Rdi;R08;R09;R10;R11;R12;R13;R14]
+let available_registers = LocSet.(caller_save 
+                                  |> remove (Alloc.LReg Rax)
+                                  |> remove (Alloc.LReg Rcx)                       
+                                 )
 
-let num_registers = List.length c_loc_table
+let num_registers = LocSet.cardinal available_registers
 
-type graph_node = {id : uid; neigh : UidSet.t; deg: int option; color: int option}
+type graph_node = {id : uid; neigh : UidSet.t; deg: int option; color: Alloc.loc option}
 type graph = graph_node list
 
 let extract_node (uid:uid) (g:graph) : (graph_node * graph) = 
@@ -766,7 +768,7 @@ let remove_node_and_edges (uid:uid) (g:graph) : graph =
         color=color
       }) 
     new_graph
-let string_of_node ({id; neigh; deg; color} : graph_node) : string = let default = -1 in Printf.sprintf "{id=%s; neigh=%s; deg=%d; color=%d;}" id (UidSet.to_string neigh) (Option.value deg ~default) (Option.value color ~default)
+let string_of_node ({id; neigh; deg; color} : graph_node) : string = let default, default_string = (-1, Alloc.LVoid) in Printf.sprintf "{id=%s; neigh=%s; deg=%d; color=%s;}" id (UidSet.to_string neigh) (Option.value deg ~default) (if Option.is_some color then Alloc.str_loc (Option.get color) else "No color")
 
 let string_of_graph (g: graph) : string = List.map string_of_node g |> String.concat "\n"
 
@@ -792,9 +794,9 @@ let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph =
   let f_locations = List.map snd rest |> List.append [entry] |> List.map (fun b -> b.insns) |> List.flatten |> List.map fst in
 
   let interference_graph = List.fold_left (fun g uid -> 
-    let live_uids_in = live.live_in uid in  
-    let live_uids_out = live.live_out uid in
-    let live_uids = UidSet.union live_uids_in live_uids_out in
+      let live_uids_in = live.live_in uid in  
+      let live_uids_out = live.live_out uid in
+      let live_uids = UidSet.union live_uids_in live_uids_out in
       (*print_endline @@ Printf.sprintf "uid: %s, live: %s" uid (UidSet.to_string live_uids);*)
       UidSet.fold (fun i g -> 
           let old_node = find_node i g in
@@ -813,13 +815,18 @@ let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph =
       interference_graph in
   complete_graph
 
-let precolor_graph (g:graph) (f:Ll.fdecl) : graph = 
+let spill_better (r: int ref) = (incr r; Alloc.LStk (- !r))
+
+let precolor_graph (g:graph) (f:Ll.fdecl) (n_spills : int ref) : graph = 
   let arg_uids = f.f_param in
   fst @@ List.fold_left (fun (gr, index) id -> 
       let n, tmp_g = extract_node id gr in 
-      let clr = if index > 5 then None else Some index in 
-      let new_node = {id=id; neigh=n.neigh; deg=None; color=clr} in
-      (List.append tmp_g [new_node]), index + 1) 
+      let new_node = 
+        if index = 3 then 
+          {id=id; neigh=n.neigh; deg=None; color = Some (spill_better n_spills)}
+        else
+          {id=id; neigh=n.neigh; deg=None; color=Some (arg_loc index)} in
+      (new_node :: tmp_g), index + 1) 
     (g, 0) arg_uids
 
 let rec color_graph (g:graph) (num_clrs:int) : graph option = 
@@ -835,61 +842,57 @@ let rec color_graph (g:graph) (num_clrs:int) : graph option =
       begin match clr_graph with
         | None -> None
         | Some graph -> 
-          let used_colors = UidSet.fold (fun neigh_id clrs -> 
+          let used_colors = LocSet.of_list (UidSet.fold (fun neigh_id clrs -> 
               begin match find_node neigh_id graph with 
                 | None -> clrs 
                 | Some node -> 
                   if Option.is_some node.color then (Option.get node.color) :: clrs 
                   else clrs end) 
-              cut.neigh [] in
-          let rec find_free_color c =
-            if List.mem c used_colors then find_free_color (c + 1) else c
+              cut.neigh []) in
+          let free_color =
+            LocSet.min_elt_opt @@ LocSet.diff available_registers used_colors
           in
-          let node_color = find_free_color 0 in
+          begin match free_color with
+            | None -> None
+            | Some _ -> Some ({id=cut.id; neigh=cut.neigh; deg=cut.deg; color=free_color} :: graph)
+          end
           (*print_endline cut.id;
             print_endline (string_of_int node_color);
             print_endline @@ string_of_graph graph;*)
 
-          Some ({id=cut.id; neigh=cut.neigh; deg=cut.deg; color=Some node_color} :: graph)
-
       end
-    end
+  end
 
-let rec color_graph_init (g:graph) (num_clrs:int) : graph = 
+let rec color_graph_init (g, r : graph * int ref) (num_clrs:int) : graph = 
+
   let colored_graph = color_graph g num_clrs in
   match colored_graph with
-  | None -> color_graph_init g (num_clrs + 1)
+  | None -> 
+    let highest_degree_node = List.filter (fun n -> Option.is_some n.deg) g
+                              |> List.sort (fun {deg=Some deg1;_} {deg=Some deg2;_} -> deg2 - deg2)
+                              |> List.hd
+    in
+    let n, new_graph = extract_node highest_degree_node.id g in
+    let new_node = {id=n.id; neigh=n.neigh; deg=n.deg; color=Some (spill_better r)} in
+    let newly_colored_graph = color_graph_init (new_graph, r) num_clrs in
+    new_node :: newly_colored_graph
   | Some graph -> graph
-
-let assign_loc (g:graph) : ((lbl * Alloc.loc) list) * int ref =
-  let n_spill = ref 0 in
-  let spill () = (incr n_spill; Alloc.LStk (- !n_spill)) in
-  let extract_colour (retu:(lbl*int option) list) ({id = i; neigh = ne;deg = deg;color = c}: graph_node) : (lbl*int option) list = retu @ [i,c] in
-  let get_colour = List.fold_left extract_colour [] g in
-  let result_loc ((i,c_opt) :(lbl * int option)) : (lbl * Alloc.loc) = 
-    begin match c_opt with
-      | None -> failwith "None for colour"
-      | Some c -> begin match List.assoc_opt c c_loc_table with
-          | Some l -> i,l
-          | None -> i,spill()
-        end
-    end
-  in (List.map result_loc get_colour),n_spill
 
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   (*print_endline @@ Llutil.string_of_cfg f.f_cfg;*)
   let interference_graph = graph_of_fdecl f live; in
   (*print_endline @@ string_of_graph interference_graph;*)
-  let precolored_graph = interference_graph(*precolor_graph interference_graph f*) in
+  let n_spills = ref 0 in
+  let precolored_graph = precolor_graph interference_graph f n_spills in
   (*print_endline @@ string_of_graph precolored_graph;
-  print_endline "";*)
-  let colored_graph = color_graph_init precolored_graph num_registers in  
-  (*print_endline @@ string_of_graph g; *)
-  let result,sp = assign_loc colored_graph in
-    {
-      uid_loc = (fun x -> try List.assoc x result with Not_found -> LLbl x);
-      spill_bytes = 8 * !sp
-    }
+    print_endline "";*)
+  let colored_graph = color_graph_init (precolored_graph, n_spills) num_registers in  
+  (*print_endline @@ string_of_graph colored_graph; *)
+  let uid_map = List.fold_left (fun l n -> (n.id, Option.get n.color) :: l) [] colored_graph in
+  {
+    uid_loc = (fun x -> try List.assoc x uid_map with Not_found -> LLbl x);
+    spill_bytes = 8 * !n_spills
+  }
 
 
 
