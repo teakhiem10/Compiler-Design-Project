@@ -539,17 +539,18 @@ let tests : suite =
 ]
 let binop_tests_manual =
   [ "llprograms/add.ll", "14"
-  (*; "llprograms/sub.ll", "1"
+  ; "llprograms/sub.ll", "1"
   ; "llprograms/mul.ll", "45"
   ; "llprograms/and.ll", "0"
   ; "llprograms/or.ll",  "1"
   ; "llprograms/xor.ll", "0"
   ; "llprograms/shl.ll", "168"
   ; "llprograms/lshr.ll", "10"
-  ; "llprograms/ashr.ll", "5" *)]
+  ; "llprograms/ashr.ll", "5" ]
 
 let indie_test=
-  binop_tests_manual
+  (*binop_tests_manual
+  @*) terminator_tests 
 
 let tests_mine : suite =
   [

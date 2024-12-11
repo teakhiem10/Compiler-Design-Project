@@ -777,8 +777,9 @@ let empty_node (id: uid)= {id=id; neigh=UidSet.empty; deg=None; color=None}
 let find_node (id: uid) (g: graph) : graph_node option = List.find_opt (fun n -> n.id = id) g
 let b_uid (b:block) = 
   let get_uidset (t:UidSet.t) ((id:uid),(instr:insn)) : UidSet.t = if (insn_assigns instr)
-  then UidS.add id t 
-  else t 
+                                                                    then 
+                                                                      UidSet.add id t 
+                                                                    else t 
 in 
 List.fold_left get_uidset UidS.empty b.insns
 
@@ -788,6 +789,7 @@ let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph =
   let entry_uids = b_uid entry in
   let body_uids = List.map snd rest |> List.map b_uid |> List.fold_left UidSet.union entry_uids in
   let all_uids = UidSet.union body_uids arg_uids in
+  print_endline @@ UidSet.to_string all_uids;
   let uid_list = UidSet.elements all_uids in
 
   let f_locations = List.map snd rest |> List.append [entry] |> List.map (fun b -> b.insns) |> List.flatten |> List.map fst in
@@ -852,18 +854,37 @@ let rec color_graph (g:graph) (num_clrs:int) : graph option =
       
     end
   end
+let c_loc_table : (int * Alloc.loc) list= [(1,LReg Rbx); (2, LReg Rdx); (3,LReg Rsi);(4, LReg Rdi); (5, LReg Rbp); (6, LReg Rsp)
+; (7,LReg R08) ;(8, LReg R09) ; (9, LReg R10) ; (10, LReg R11) ; (11,LReg R12) ; (12, LReg R13) ; (13, LReg R14) ;(14, LReg R15)]
 
+let assign_loc (g:graph) : ((lbl * Alloc.loc) list) * int ref =
+  let n_spill = ref 0 in
+  let spill () = (incr n_spill; Alloc.LStk (- !n_spill)) in
+  let extract_colour (retu:(lbl*int option) list) ({id = i; neigh = ne;deg = deg;color = c}: graph_node) : (lbl*int option) list = retu @ [i,c] in
+  let get_colour = List.fold_left extract_colour [] g in
+  let result_loc ((i,c_opt) :(lbl * int option)) : (lbl * Alloc.loc) = 
+    begin match c_opt with
+      | None -> failwith "None for colour"
+      | Some c -> begin match List.assoc_opt c c_loc_table with
+                  | Some l -> i,l
+                  | None -> i,spill()
+                  end
+      end
+    in (List.map result_loc get_colour),n_spill
 
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
-  let interference_graph = graph_of_fdecl f live in
+  print_endline @@ Llutil.string_of_cfg f.f_cfg;
+  let interference_graph = graph_of_fdecl f live; in
   let precolored_graph = precolor_graph interference_graph f in
-  (*print_endline @@ string_of_graph precolored_graph;
-  print_endline "";*)
+  print_endline @@ string_of_graph precolored_graph;
+  print_endline "";
   let colored_graph = color_graph precolored_graph num_registers in
   begin match colored_graph with
   | None -> failwith "Could not color graph"
-  | Some g-> print_endline @@ string_of_graph g;
-    failwith "Backend.better_layout not implemented"
+  | Some g-> let result,sp = assign_loc g in
+                {uid_loc = (fun x -> print_endline @@ x; List.assoc x result);spill_bytes = 8 * !sp}
+   (*print_endline @@ string_of_graph g;
+    failwith "Backend.better_layout not implemented"*)
   end
 
 
