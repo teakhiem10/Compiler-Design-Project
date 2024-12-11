@@ -742,13 +742,11 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
 *)
 
 
-(* The available palette of registers.  Excludes Rax and Rcx *)
-let pal = LocSet.(caller_save 
-                  |> remove (Alloc.LReg Rax)
-                  |> remove (Alloc.LReg Rcx)                       
-                 )
+(* The available palette of registers.  Excludes Rax and Rcx and R15 *)
+let c_loc_table : (int * Alloc.loc) list= List.mapi (fun i reg -> (i, Alloc.LReg reg)) 
+    [Rbx;Rdx;Rsi;Rdi;R08;R09;R10;R11;R12;R13;R14]
 
-let num_registers = LocSet.cardinal pal
+let num_registers = List.length c_loc_table
 
 type graph_node = {id : uid; neigh : UidSet.t; deg: int option; color: int option}
 type graph = graph_node list
@@ -789,13 +787,13 @@ let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph =
   let entry_uids = b_uid entry in
   let body_uids = List.map snd rest |> List.map b_uid |> List.fold_left UidSet.union entry_uids in
   let all_uids = UidSet.union body_uids arg_uids in
-  print_endline @@ UidSet.to_string all_uids;
   let uid_list = UidSet.elements all_uids in
 
   let f_locations = List.map snd rest |> List.append [entry] |> List.map (fun b -> b.insns) |> List.flatten |> List.map fst in
 
   let interference_graph = List.fold_left (fun g uid -> 
       let live_uids = live.live_out uid in
+      (*print_endline @@ Printf.sprintf "uid: %s, live: %s" uid (UidSet.to_string live_uids);*)
       UidSet.fold (fun i g -> 
           let old_node = find_node i g in
           let node = begin match old_node with
@@ -853,9 +851,7 @@ let rec color_graph (g:graph) (num_clrs:int) : graph option =
           Some ({id=cut.id; neigh=cut.neigh; deg=cut.deg; color=Some node_color} :: graph)
 
       end
-  end
-let c_loc_table : (int * Alloc.loc) list= List.mapi (fun i reg -> (i, Alloc.LReg reg)) 
-    [Rbx;Rdx;Rsi;Rdi;R08;R09;R10;R11;R12;R13;R14]
+    end
 
 let assign_loc (g:graph) : ((lbl * Alloc.loc) list) * int ref =
   let n_spill = ref 0 in
@@ -873,15 +869,16 @@ let assign_loc (g:graph) : ((lbl * Alloc.loc) list) * int ref =
   in (List.map result_loc get_colour),n_spill
 
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
-  print_endline @@ Llutil.string_of_cfg f.f_cfg;
+  (*print_endline @@ Llutil.string_of_cfg f.f_cfg;*)
   let interference_graph = graph_of_fdecl f live; in
-  let precolored_graph = precolor_graph interference_graph f in
-  print_endline @@ string_of_graph precolored_graph;
-  print_endline "";
+  (*print_endline @@ string_of_graph interference_graph;*)
+  let precolored_graph = interference_graph(*precolor_graph interference_graph f*) in
+  (*print_endline @@ string_of_graph precolored_graph;
+  print_endline "";*)
   let colored_graph = color_graph precolored_graph num_registers in
   begin match colored_graph with
     | None -> failwith "Could not color graph"
-    | Some g-> let result,sp = assign_loc g in
+    | Some g-> (*print_endline @@ string_of_graph g; *)let result,sp = assign_loc g in
       {
         uid_loc = (fun x -> try List.assoc x result with Not_found -> LLbl x);
         spill_bytes = 8 * !sp
