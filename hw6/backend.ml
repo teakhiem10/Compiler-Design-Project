@@ -882,7 +882,10 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   begin match colored_graph with
   | None -> failwith "Could not color graph"
   | Some g-> let result,sp = assign_loc g in
-                {uid_loc = (fun x -> print_endline @@ x; List.assoc x result);spill_bytes = 8 * !sp}
+                {
+                  uid_loc = (fun x -> try List.assoc x result with Not_found -> LLbl x);
+                  spill_bytes = 8 * !sp
+                }
    (*print_endline @@ string_of_graph g;
     failwith "Backend.better_layout not implemented"*)
   end
