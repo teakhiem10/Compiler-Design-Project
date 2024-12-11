@@ -563,4 +563,4 @@ let tests_mine : suite =
 ]
 
 let graded_tests : suite =
-  tests_mine
+  tests

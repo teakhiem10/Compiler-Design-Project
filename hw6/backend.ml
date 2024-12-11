@@ -792,7 +792,9 @@ let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph =
   let f_locations = List.map snd rest |> List.append [entry] |> List.map (fun b -> b.insns) |> List.flatten |> List.map fst in
 
   let interference_graph = List.fold_left (fun g uid -> 
-      let live_uids = live.live_out uid in
+    let live_uids_in = live.live_in uid in  
+    let live_uids_out = live.live_out uid in
+    let live_uids = UidSet.union live_uids_in live_uids_out in
       (*print_endline @@ Printf.sprintf "uid: %s, live: %s" uid (UidSet.to_string live_uids);*)
       UidSet.fold (fun i g -> 
           let old_node = find_node i g in
