@@ -817,9 +817,26 @@ let graph_of_fdecl (f:Ll.fdecl) (live:liveness) : graph =
 
 let spill_better (r: int ref) = (incr r; Alloc.LStk (- !r))
 
+let extract_calls (f:Ll.fdecl) : Ll.operand list list = 
+  let all_blocks = fst f.f_cfg :: List.map snd (snd f.f_cfg) in
+  List.map (fun b -> b.insns) all_blocks 
+  |> List.flatten
+  |> List.map snd
+  |> List.filter (fun i -> match i with | Call _ -> true | _ -> false)
+  |> List.map (fun (Call (_, _, args)) -> List.map snd args)
+
+let get_neighbor_colors (g:graph) (neighbors : UidSet.t) : LocSet.t = 
+  LocSet.of_list (UidSet.fold (fun neigh_id clrs -> 
+      begin match find_node neigh_id g with 
+        | None -> clrs 
+        | Some node -> 
+          if Option.is_some node.color then (Option.get node.color) :: clrs 
+          else clrs end) 
+      neighbors [])
+
 let precolor_graph (g:graph) (f:Ll.fdecl) (n_spills : int ref) : graph = 
   let arg_uids = f.f_param in
-  fst @@ List.fold_left (fun (gr, index) id -> 
+  let arg_colored = fst @@ List.fold_left (fun (gr, index) id -> 
       let n, tmp_g = extract_node id gr in 
       let new_node = 
         if index = 3 then 
@@ -827,7 +844,31 @@ let precolor_graph (g:graph) (f:Ll.fdecl) (n_spills : int ref) : graph =
         else
           {id=id; neigh=n.neigh; deg=None; color=Some (arg_loc index)} in
       (new_node :: tmp_g), index + 1) 
-    (g, 0) arg_uids
+      (g, 0) arg_uids 
+  in
+  let call_args = extract_calls f in
+  let call_colored = List.fold_left (fun gr operands ->
+      fst @@ List.fold_left (fun (graph, index) op ->
+        let new_index = index + 1 in
+          begin match op with
+            | Id uid -> 
+              let node, tmp_g = extract_node uid graph in
+              if Option.is_some node.color then graph, new_index 
+              else 
+              let arg_location = arg_loc index in
+              let used_colors = get_neighbor_colors graph node.neigh in
+              if LocSet.mem arg_location used_colors then
+                (graph, new_index)
+              else
+                let new_node = {id=uid; neigh=node.neigh; deg=None; color=Some arg_location} in
+                new_node :: tmp_g, new_index
+            | _ -> graph, new_index
+          end
+        ) (gr, 0) operands
+    ) arg_colored call_args
+  in
+
+  call_colored
 
 let rec color_graph (g:graph) (num_clrs:int) : graph option = 
   let potential_cuts = List.filter (fun n -> Option.is_some n.deg && Option.get n.deg < num_clrs) g in
@@ -842,13 +883,7 @@ let rec color_graph (g:graph) (num_clrs:int) : graph option =
       begin match clr_graph with
         | None -> None
         | Some graph -> 
-          let used_colors = LocSet.of_list (UidSet.fold (fun neigh_id clrs -> 
-              begin match find_node neigh_id graph with 
-                | None -> clrs 
-                | Some node -> 
-                  if Option.is_some node.color then (Option.get node.color) :: clrs 
-                  else clrs end) 
-              cut.neigh []) in
+          let used_colors = get_neighbor_colors graph cut.neigh in
           let free_color =
             LocSet.min_elt_opt @@ LocSet.diff available_registers used_colors
           in
@@ -884,8 +919,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   (*print_endline @@ string_of_graph interference_graph;*)
   let n_spills = ref 0 in
   let precolored_graph = precolor_graph interference_graph f n_spills in
-  (*print_endline @@ string_of_graph precolored_graph;
-    print_endline "";*)
+  (*print_endline @@ Printf.sprintf "%s\n" (string_of_graph precolored_graph);*)
   let colored_graph = color_graph_init (precolored_graph, n_spills) num_registers in  
   (*print_endline @@ string_of_graph colored_graph; *)
   let uid_map = List.fold_left (fun l n -> (n.id, Option.get n.color) :: l) [] colored_graph in
