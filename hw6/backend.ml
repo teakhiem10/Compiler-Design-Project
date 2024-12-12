@@ -849,19 +849,19 @@ let precolor_graph (g:graph) (f:Ll.fdecl) (n_spills : int ref) : graph =
   let call_args = extract_calls f in
   let call_colored = List.fold_left (fun gr operands ->
       fst @@ List.fold_left (fun (graph, index) op ->
-        let new_index = index + 1 in
+          let new_index = index + 1 in
           begin match op with
             | Id uid -> 
               let node, tmp_g = extract_node uid graph in
               if Option.is_some node.color then graph, new_index 
               else 
-              let arg_location = arg_loc index in
-              let used_colors = get_neighbor_colors graph node.neigh in
-              if LocSet.mem arg_location used_colors then
-                (graph, new_index)
-              else
-                let new_node = {id=uid; neigh=node.neigh; deg=None; color=Some arg_location} in
-                new_node :: tmp_g, new_index
+                let arg_location = arg_loc index in
+                let used_colors = get_neighbor_colors graph node.neigh in
+                if LocSet.mem arg_location used_colors then
+                  (graph, new_index)
+                else
+                  let new_node = {id=uid; neigh=node.neigh; deg=None; color=Some arg_location} in
+                  new_node :: tmp_g, new_index
             | _ -> graph, new_index
           end
         ) (gr, 0) operands
@@ -907,8 +907,13 @@ let rec color_graph_init (g, r : graph * int ref) (num_clrs:int) : graph =
                               |> List.sort (fun {deg=Some deg1;_} {deg=Some deg2;_} -> deg2 - deg1)
                               |> List.hd
     in
-    let n, new_graph = extract_node highest_degree_node.id g in
-    let new_node = {id=n.id; neigh=n.neigh; deg=n.deg; color=Some (spill_better r)} in
+    let new_graph = remove_node_and_edges highest_degree_node.id g in
+    let new_node = {
+      id=highest_degree_node.id; 
+      neigh=highest_degree_node.neigh; 
+      deg=highest_degree_node.deg; 
+      color=Some (spill_better r)
+    } in
     let newly_colored_graph = color_graph_init (new_graph, r) num_clrs in
     new_node :: newly_colored_graph
   | Some graph -> graph
