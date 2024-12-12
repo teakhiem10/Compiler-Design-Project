@@ -768,7 +768,7 @@ let remove_node_and_edges (uid:uid) (g:graph) : graph =
         color=color
       }) 
     new_graph
-let string_of_node ({id; neigh; deg; color} : graph_node) : string = let default, default_string = (-1, Alloc.LVoid) in Printf.sprintf "{id=%s; neigh=%s; deg=%d; color=%s;}" id (UidSet.to_string neigh) (Option.value deg ~default) (if Option.is_some color then Alloc.str_loc (Option.get color) else "No color")
+let string_of_node ({id; neigh; deg; color} : graph_node) : string = let default = -1 in Printf.sprintf "{id=%s; neigh=%s; deg=%d; color=%s;}" id (UidSet.to_string neigh) (Option.value deg ~default) (if Option.is_some color then Alloc.str_loc (Option.get color) else "No color")
 
 let string_of_graph (g: graph) : string = List.map string_of_node g |> String.concat "\n"
 
@@ -904,7 +904,7 @@ let rec color_graph_init (g, r : graph * int ref) (num_clrs:int) : graph =
   match colored_graph with
   | None -> 
     let highest_degree_node = List.filter (fun n -> Option.is_some n.deg) g
-                              |> List.sort (fun {deg=Some deg1;_} {deg=Some deg2;_} -> deg2 - deg2)
+                              |> List.sort (fun {deg=Some deg1;_} {deg=Some deg2;_} -> deg2 - deg1)
                               |> List.hd
     in
     let n, new_graph = extract_node highest_degree_node.id g in
